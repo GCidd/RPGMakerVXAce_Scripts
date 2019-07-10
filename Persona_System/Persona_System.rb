@@ -19,6 +19,15 @@
 #        <Evolve at: rank>
 # and the persona to which it will evolve to with the following one:
 #        <Evolve to: persona_name>
+# Additionally, you can set arcana rank and player level
+# requirements to personas, so that a user can only equip
+# that persona when they meet those requirements. 
+# To apply a minimum arcana rank requirement for a specific 
+# persona you use the following tag:
+#        <Arcana rank: rank>
+# To apply a minimum player level requirement  for a specific persona
+# you use the following tag:
+#        <Player level: level>
 # ------------------------------------------------------------------------------
 # Tags on actors (that use personas)
 # ==============================================================================
@@ -146,7 +155,7 @@
 # list of persona names like this:
 #        ["name_1", "name_2", ...]
 # and then by calling the scene with the following command:
-#        SceneManager.call(Scene_Shuffle).
+#        $game_system.shuffle_time
 # It is important to remember that you cannot have duplicate personas
 # in your party! Additionally, a message box will be displayed if you
 # try running Shuffle Time without setting the list of cards to be included!
@@ -165,14 +174,6 @@
 #        <Fusion parents: 13, 14>
 # then when you try fusing Andras with Forneus, the fusion will result
 # to... Himiko.
-# Additionally, you can specify arcana rank and player level
-# requirements to specific fusion children. To apply a minimum
-# arcana rank requirement for a specific persona you use the following
-# tag:
-#        <Arcana rank: rank>
-# To apply a minimum player level requirement  for a specific persona
-# you use the following tag:
-#        <Player level: level>
 # You can also fuse three personas together to create special
 # ones too! To specify the parents of a "special" persona you can
 # use the following tag:
@@ -196,7 +197,6 @@
 # Mady by vFoggy
 # ==============================================================================
 # 
-
 #-------------------------------------------------------------------------------
 #  ____                                   __  __           _       _      
 # |  _ \ ___ _ __ ___  ___  _ __   __ _  |  \/  | ___   __| |_   _| | ___ 
@@ -215,6 +215,18 @@
 module Persona
   PERSONA_EXP_GAIN_MULTIPLIER = 1.0
   
+              # phys, absorb, fire, ice, lightning, water, earth, wind, light, dark
+  PERSONA_ELE_ICON_INDEXES = [115, 112, 96, 97, 98, 99, 100, 101, 102, 103]
+  # icon index that indicates that indicates the persona's strong element
+  # -1 will just show "Str"
+  PERSONA_STRONG_ELE_ICON = -1  
+  # icon index that indicates that indicates the persona's weak element
+  # -1 will just show "Wk"
+  PERSONA_WEAK_ELE_ICON = -1
+  # icon index that indicates that indicates the persona's normal element
+  # -1 will just show "-"
+  PERSONA_NORMAL_ELE_ICON = -1
+
   # parameter multipliers. if all are the same only one number can be used for all
   USER_PARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
   USER_XPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
@@ -273,20 +285,8 @@ module Persona
 #                                         |_|                          
 # Skill Forget Module Options
 #-------------------------------------------------------------------------------
-        # phys, absorb, fire, ice, lightning, water, earth, wind, light, dark
-    PERSONA_ELE_ICON_INDEXES = [115, 112, 96, 97, 98, 99, 100, 101, 102, 103]
-    # icon index that indicates that indicates the persona's strong element
-    # -1 will just show "Str"
-    PERSONA_STRONG_ELE_ICON = -1  
-    # icon index that indicates that indicates the persona's weak element
-    # -1 will just show "Wk"
-    PERSONA_WEAK_ELE_ICON = -1
-    # icon index that indicates that indicates the persona's normal element
-    # -1 will just show "-"
-    PERSONA_NORMAL_ELE_ICON = -1
-
-    # max number of skills a persona can have
-    DEFAULT_MAX_PERSONA_SKILLS = 4
+  # max number of skills a persona can have
+  DEFAULT_MAX_PERSONA_SKILLS = 4
 
 #-------------------------------------------------------------------------------
 #     _                                __  __           _       _      
@@ -339,9 +339,9 @@ module Persona
     COMMON_EVENT_ID = 1
     
     # variable id in which the name of the persona that is being evolved is stored
-    EVOLVING_PERSONA_VAR_ID = 11
+    EVOLVING_PERSONA_VAR_ID = 13
     # variable id in which the name of the persona to which the persona will be evolved
-    RESULTING_PERSONA_VAR_ID = 12
+    RESULTING_PERSONA_VAR_ID = 14
 
 #-------------------------------------------------------------------------------
 #  _____          _               __  __           _       _      
@@ -432,10 +432,10 @@ module Persona
   MIN_CARDS_TO_SHUFFLE = 2
   
   # variable id from which the next shuffle method is set
-  FORCE_SHUFFLE_METHOD_VAR_ID = 1
+  FORCE_SHUFFLE_METHOD_VAR_ID = 10
   
   # variable id from which the next shuffle cards are set
-  SHUFFLE_ITEMS_VAR_ID = 2
+  SHUFFLE_ITEMS_VAR_ID = 11
   # if true then duplicates cards will be included in the shuffle time
   # does not apply to blank and penalty cards. use the 
   # MIN/MAX_PENALTY/BLANK_CARDS options
@@ -532,6 +532,11 @@ class RPG::Actor < RPG::BaseItem
     note =~ /<Persona: (\d+)>/ ? $1.to_i : nil
   end
   
+  def min_player_level
+    # min player level required to fuse persona
+    note =~ /<Player level: (\d+)>/ ? $1.to_i : 0
+  end
+  
   def battletest_persona
     # get persona to use for battletest
     note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : 0
@@ -557,7 +562,7 @@ end
 class Game_Actor < Game_Battler
   include Persona
   
-  attr_reader :users, :only_persona
+  attr_reader :users, :only_persona, :min_player_level
   alias persona_su setup
   def setup(actor_id)
     @persona = nil
@@ -570,7 +575,7 @@ class Game_Actor < Game_Battler
     @is_persona = actor.persona?
     @users = actor.users
     @only_persona = actor.only_persona
-    @is_special_persona = actor.special_fusion.size > 0
+    @min_player_level = actor.min_player_level
   end
   
   def persona?
@@ -775,6 +780,22 @@ class Game_Party < Game_Unit
   
   def battle_personas
     members.reject{|m| m.persona.nil?}.collect{|m| m.persona}
+  end
+  
+  def persona_in_party(persona_name)
+    return !personas.find{|p| p.name == persona_name}.nil?
+  end
+  
+  def persona_equipped_by(actor_id, persona_name)
+    actor = members.find{|m| m.id == actor_id}
+    return false if actor.nil?
+    return false if actor.persona.nil?
+    return actor.persona.name == persona_name
+  end
+  
+  def persona_equipped(persona_name)
+    persona = personas.find{|p| p.name == persona_name}
+    return persona_available(persona)
   end
   
   def setup_test_battle_personas
@@ -1299,6 +1320,7 @@ class Window_PersonaStatus < Window_Command
     @persona = persona
     super(0, 0)
     self.visible = false
+    select_last
   end
   
   def window_width
@@ -1350,7 +1372,7 @@ class Window_PersonaStatus < Window_Command
   
   def refresh
     contents.clear
-    draw_everything
+    draw_everything if !@persona.nil?
   end
   
   def draw_everything
@@ -1501,6 +1523,10 @@ class Window_PersonaStatus < Window_Command
     else
       draw_icon(PERSONA_WEAK_ELE_ICON, x, y + line_height)
     end
+  end
+  
+  def select_last
+    select(-1)
   end
 end
 
@@ -2125,11 +2151,6 @@ class RPG::Actor < RPG::BaseItem
     note =~ /<Arcana rank: (\d+)>/ ? $1.to_i : 0
   end
   
-  def min_player_level
-    # min player level required to fuse persona
-    note =~ /<Player level: (\d+)>/ ? $1.to_i : 0
-  end
-  
   def battletest_persona
     # get persona to use for battletest
     note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : 0
@@ -2197,8 +2218,7 @@ end
 class Game_Actor < Game_Battler
   include Persona
 
-  attr_reader :social_description, :max_arcana_rank, :min_arcana_rank, 
-  :min_player_level
+  attr_reader :social_description, :max_arcana_rank, :min_arcana_rank
   alias persona_arcana_sp setup_persona
   def setup_persona
     persona_arcana_sp
@@ -2207,7 +2227,6 @@ class Game_Actor < Game_Battler
     @max_arcana_rank = @is_persona ? self.class.max_rank : nil
     @rank_var_id = self.class.rank_var_id
     @min_arcana_rank = actor.min_arcana_rank
-    @min_player_level = actor.min_player_level
   end
   
   alias persona_arcana_cep can_equip_persona
@@ -2966,6 +2985,7 @@ class Scene_EvolvedPersona < Scene_Base
     @status_window = Window_PersonaStatus.new($game_party.menu_persona)
     @status_window.set_handler(:ok,   method(:close_status))
     @status_window.set_handler(:cancel,   method(:close_status))
+    @status_window.show.activate
   end
   
   def close_status
@@ -3042,6 +3062,7 @@ class Game_System
   def fuse_personas(fuse_count)
     @fuse_count = fuse_count
     SceneManager.call(Scene_Fuse)
+    Fiber.yield
   end
   
   def get_fusion_child(parent_a, parent_b)
@@ -3413,8 +3434,7 @@ class Window_FuseResults < Window_Base
     return if child.nil?
     rect = item_rect(index)
     users = $game_party.members.select{|m| !child.users.index(m.id).nil? }
-    user = users.find{|u| u.level >= child.actor.min_player_level }
-    enabled = child.arcana_rank <= child.actor.min_arcana_rank && !user.nil?
+    enabled = true
     draw_item_background(index)
     draw_persona_info(child, rect.x, rect.y, enabled)
   end
@@ -3716,7 +3736,6 @@ module BattleManager
         wait_for_shuffle
       end
       
-      
       if $game_system.shuffle_result == "Penalty"
         # if player drew a penalty card then skip battle rewards
         $game_message.add(PENALTY_CARD_RESULT_MSG)
@@ -3815,6 +3834,11 @@ class Game_System
   
   def reset_shuffle_result
     @shuffle_result = nil
+  end
+  
+  def shuffle_time
+    SceneManager.call(Scene_Shuffle)
+    Fiber.yield
   end
   
   def filter_cards(cards)
@@ -4017,12 +4041,12 @@ end
 
 class Scene_Shuffle < Scene_Base
   include Persona
+  
   def start
     super
     create_attributes
     create_acceptance_window
     create_counter_window
-    create_viewport
     create_background
     create_paths
     start_cards_appear
@@ -4076,9 +4100,6 @@ class Scene_Shuffle < Scene_Base
     @shuffle_paths = []
     
     @cursor_index = 0
-    # calculate all x,y indexes of the cards. used only for up and down movement
-    # in matching shuffle method
-    @card_indexes = @cards.each_with_index.collect{|n, i| [i/MAX_CARDS_PER_ROW, i%MAX_CARDS_PER_ROW]}
   end
   
   def get_cards
@@ -4095,16 +4116,13 @@ class Scene_Shuffle < Scene_Base
       msgbox("No cards were defined in variable with id #{SHUFFLE_ITEMS_VAR_ID} for the shuffle time!")
       SceneManager.return
       return
-#~       card_items = $game_variables[SHUFFLE_ITEMS_VAR_ID]
-#~       $game_variables[SHUFFLE_ITEMS_VAR_ID] = nil
-#~       card_items = $game_system.filter_cards(card_items) if FILTER_MANUAL_CARDS
     end
     
     @cards = card_items.collect{|c| Sprite_Card.new(@viewport, c) }
   end
   
   def create_acceptance_window
-    @acceptance_window = Window_AcceptShuffle.new()
+    @acceptance_window = Window_AcceptShuffle.new
     @acceptance_window.set_handler(:accept,   method(:start_shuffle_time))
     @acceptance_window.set_handler(:cancel,   method(:cancel_shuffle))
     @acceptance_window.open
@@ -4143,6 +4161,9 @@ class Scene_Shuffle < Scene_Base
     end
 
     @shuffle_phase = "Shuffle"
+    # calculate all x,y indexes of the cards. used only for up and down movement
+    # in matching shuffle method
+    @card_indexes = @cards.each_with_index.collect{|n, i| [i/MAX_CARDS_PER_ROW, i%MAX_CARDS_PER_ROW]}
   end
   
   def start_matching
@@ -4190,6 +4211,9 @@ class Scene_Shuffle < Scene_Base
     end
     
     @counter_window.open
+    # calculate all x,y indexes of the cards. used only for up and down movement
+    # in matching shuffle method
+    @card_indexes = @cards.each_with_index.collect{|n, i| [i/MAX_CARDS_PER_ROW, i%MAX_CARDS_PER_ROW]}
   end
   
   def cancel_shuffle
@@ -4404,7 +4428,7 @@ class Scene_Shuffle < Scene_Base
       @cards[@cursor_index].revert_to_normal
       
       # same concept with :UP
-      index[0] += 1      
+      index[0] += 1
       index[0] = @card_indexes[0][0] if index[0] > @card_indexes[-1][0]
       index[1] = @card_indexes[-1][1] if index[1] > @card_indexes[-1][1]
       prev_card_x = @cards[@cursor_index].x
@@ -4460,7 +4484,7 @@ class Scene_Shuffle < Scene_Base
     terminate
   end
   
-  def create_viewport
+  def create_main_viewport
     @viewport = Viewport.new
     @viewport.z = 200
   end
