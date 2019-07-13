@@ -36,7 +36,7 @@ class Scene_Base
   
   alias foggy_popup_s start
   def start
-    popup_s
+    foggy_popup_s
     @items_received_popups_q = []
     @items_received_popups = []
     @item_received_show_delay = 0
@@ -54,7 +54,7 @@ class Scene_Base
   
   alias foggy_popup_update update
   def update
-    popup_update
+    foggy_popup_update
     update_items_received
   end
   
