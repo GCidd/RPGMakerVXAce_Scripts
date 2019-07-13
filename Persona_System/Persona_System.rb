@@ -4114,7 +4114,7 @@ class Scene_Shuffle < Scene_Base
     
     if card_items.nil? || card_items == 0
       msgbox("No cards were defined in variable with id #{SHUFFLE_ITEMS_VAR_ID} for the shuffle time!")
-      SceneManager.return
+      cancel_shuffle
       return
     end
     
@@ -4217,6 +4217,8 @@ class Scene_Shuffle < Scene_Base
   end
   
   def cancel_shuffle
+    @last_bgm.replay
+    @last_bgs.replay
     SceneManager.return
   end
   
