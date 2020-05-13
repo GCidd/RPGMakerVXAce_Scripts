@@ -227,6 +227,14 @@ module Persona
   # -1 will just show "-"
   PERSONA_NORMAL_ELE_ICON = -1
 
+  # rates multipliers. if all are the same only one number can be used for all
+  USER_ELEMENT_RATE_MULTIPLIER = 1.0
+  USER_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  USER_STATE_RATE_MULTIPLIER = 1.0
+  PERSONA_ELEMENT_RATE_MULTIPLIER = 1.0
+  PERSONA_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  PERSONA_STATE_RATE_MULTIPLIER = 1.0
+  
   # parameter multipliers. if all are the same only one number can be used for all
   USER_PARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
   USER_XPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
@@ -664,6 +672,15 @@ class Game_Actor < Game_Battler
     return []
   end
   
+  def state_resist?(state_id)
+    actor_resists = state_resist_set.include?(state_id)
+    persona_resists = false
+    if !persona? && !@persona.nil?
+      persona_resists = @persona.state_resist_set.include?(state_id)
+    end
+    return actor_resists || persona_resists
+  end
+  
   alias persona_param param
   def param(param_id)
     # get the value of the actor's parameter
@@ -676,6 +693,48 @@ class Game_Actor < Game_Battler
       value = (value * user_mult) + (@persona.param(param_id) * persona_mult)
     end
     return value.to_i
+  end
+  
+  alias fog_er element_rate
+  def element_rate(element_id)
+    # get the value of the actor's element rate
+    value = features_pi(FEATURE_ELEMENT_RATE, element_id)
+    if !persona? && !@persona.nil?
+      # get the actor's and persona's multiplier and add both of their element rate 
+      # with their respective multiplier
+      user_mult = USER_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? USER_ELEMENT_RATE_MULTIPLIER[xparam_id] : USER_ELEMENT_RATE_MULTIPLIER
+      persona_mult = PERSONA_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_ELEMENT_RATE_MULTIPLIER[xparam_id] : PERSONA_ELEMENT_RATE_MULTIPLIER
+      value = (value * user_mult) + (@persona.features_pi(FEATURE_ELEMENT_RATE, element_id) * persona_mult)
+    end
+    return value
+  end
+  
+  alias fog_dr debuff_rate
+  def debuff_rate(param_id)
+    # get the value of the actor's debuff rate
+    value = features_pi(FEATURE_DEBUFF_RATE, param_id)
+    if !persona? && !@persona.nil?
+      # get the actor's and persona's multiplier and add both of their debuff rate 
+      # with their respective multiplier
+      user_mult = USER_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? USER_DEBUFF_RATE_MULTIPLIER[xparam_id] : USER_DEBUFF_RATE_MULTIPLIER
+      persona_mult = PERSONA_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_DEBUFF_RATE_MULTIPLIER[xparam_id] : PERSONA_DEBUFF_RATE_MULTIPLIER
+      value = (value * user_mult) + (@persona.features_pi(FEATURE_DEBUFF_RATE, param_id) * persona_mult)
+    end
+    return value
+  end
+  
+  alias fog_sr state_rate
+  def state_rate(state_id)
+    # get the value of the actor's state rate
+    value = features_pi(FEATURE_STATE_RATE, state_id)
+    if !persona? && !@persona.nil?
+      # get the actor's and persona's multiplier and add both of their state rate 
+      # with their respective multiplier
+      user_mult = USER_STATE_RATE_MULTIPLIER.is_a?(Array) ? USER_STATE_RATE_MULTIPLIER[xparam_id] : USER_STATE_RATE_MULTIPLIER
+      persona_mult = PERSONA_STATE_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_STATE_RATE_MULTIPLIER[xparam_id] : PERSONA_STATE_RATE_MULTIPLIER
+      value = (value * user_mult) + (@persona.features_pi(FEATURE_STATE_RATE, state_id) * persona_mult)
+    end
+    return value
   end
   
   alias persona_xparam xparam
@@ -1493,9 +1552,9 @@ class Window_PersonaStatus < Window_Command
       draw_icon(icons[i], new_x, y)
       if @persona.element_rate(i+1) == 1.0
         draw_normal_ele_icon(new_x, y)
-      elsif @persona.element_rate(i+1) > 1.0
-        draw_strong_ele_icon(new_x, y)
       elsif @persona.element_rate(i+1) < 1.0
+        draw_strong_ele_icon(new_x, y)
+      elsif @persona.element_rate(i+1) > 1.0
         draw_weak_ele_icon(new_x, y)
       end
     end
