@@ -226,7 +226,7 @@ module Persona
   # icon index that indicates that indicates the persona's normal element
   # -1 will just show "-"
   PERSONA_NORMAL_ELE_ICON = -1
-
+  
   # rates multipliers. if all are the same only one number can be used for all
   USER_ELEMENT_RATE_MULTIPLIER = 1.0
   USER_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
@@ -1552,9 +1552,9 @@ class Window_PersonaStatus < Window_Command
       draw_icon(icons[i], new_x, y)
       if @persona.element_rate(i+1) == 1.0
         draw_normal_ele_icon(new_x, y)
-      elsif @persona.element_rate(i+1) < 1.0
-        draw_strong_ele_icon(new_x, y)
       elsif @persona.element_rate(i+1) > 1.0
+        draw_strong_ele_icon(new_x, y)
+      elsif @persona.element_rate(i+1) < 1.0
         draw_weak_ele_icon(new_x, y)
       end
     end
@@ -2283,14 +2283,40 @@ class Game_Actor < Game_Battler
     persona_arcana_sp
     @social_description = actor.social_description
     @is_arcana = @is_persona ? self.class.arcana? : false
-    @max_arcana_rank = @is_persona ? self.class.max_rank : nil
-    @rank_var_id = self.class.rank_var_id
+    
+    # check if a class exists with the same name as the nickname
+    nickname_of_arcana = !$data_classes.find{|c| !c.nil? && c.arcana? && c.name == @nickname }.nil?
+    if !@is_arcana && nickname_of_arcana
+      # if class is not of an arcana but the nickname is then actor is an arcana
+      @is_arcana = true
+    end
+    
+    if nickname_of_arcana
+      # if nickname is of arcana, get the arcana class it belongs to
+      arcana_class = $data_classes.find{|c| !c.nil? && c.arcana? && c.name == @nickname }
+    else
+      arcana_class = self.class
+    end
+
+    @max_arcana_rank = @is_persona ? arcana_class.max_rank : nil
+    @rank_var_id = arcana_class.rank_var_id
     @min_arcana_rank = actor.min_arcana_rank
   end
   
   alias persona_arcana_cep can_equip_persona
   def can_equip_persona(persona)
     persona.min_arcana_rank <= persona.arcana_rank && persona_arcana_cep(persona)
+  end
+  
+  def arcana_name
+    # return appropriate arcana name
+    if @is_arcana && self.class.arcana?
+      return self.class.name
+    elsif @is_arcana
+      return @nickname
+    else
+      return ""
+    end
   end
   
   def arcana?
@@ -3199,6 +3225,12 @@ class Window_Fuse < Window_Command
     @selected_personas
   end
   
+  def remove_last_persona
+    @selected_personas.pop
+    @result = nil
+    refresh
+  end
+  
   def reset
     self.active = true
     select_last
@@ -3351,7 +3383,7 @@ class Window_Fuse < Window_Command
     offset_x = 0
     
     draw_actor_class(persona, x + offset_x, y)
-    offset_x += text_size(persona.class.name + " ").width
+    offset_x += text_size(persona.arcana_name + " ").width
     
     draw_actor_level(persona, x + offset_x, y)
     offset_x += text_size(Vocab::level_a + persona.level.to_s + " ").width
@@ -3453,7 +3485,7 @@ class Window_FuseResults < Window_Base
   
   def draw_actor_class(actor, x, y, width = 112, enabled=true)
     change_color(normal_color, enabled)
-    draw_text(x, y, width, line_height, actor.class.name)
+    draw_text(x, y, width, line_height, actor.arcana_name)
   end
   
   def draw_actor_name(actor, x, y, width = 112, enabled=true)
@@ -3471,7 +3503,7 @@ class Window_FuseResults < Window_Base
     offset_x = 0
     
     draw_actor_class(persona, x + offset_x, y, 112, enabled)
-    offset_x += text_size(persona.class.name + " ").width
+    offset_x += text_size(persona.arcana_name + " ").width
     
     draw_actor_level(persona, x + offset_x, y, enabled)
     offset_x += text_size(Vocab::level_a + persona.level.to_s + " ").width
@@ -3735,6 +3767,7 @@ class Scene_Fuse < Scene_Base
     else
       @message_window.close
       @choice = -1
+      @fuse_window.remove_last_persona
       return
     end
   end
