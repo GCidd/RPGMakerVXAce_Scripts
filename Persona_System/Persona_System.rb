@@ -196,7 +196,6 @@
 # ==============================================================================
 # Mady by vFoggy
 # ==============================================================================
-# 
 #-------------------------------------------------------------------------------
 #  ____                                   __  __           _       _      
 # |  _ \ ___ _ __ ___  ___  _ __   __ _  |  \/  | ___   __| |_   _| | ___ 
@@ -549,6 +548,14 @@ class RPG::Actor < RPG::BaseItem
     # get persona to use for battletest
     note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : 0
   end
+  
+  def hide_status_nickname
+    note =~ /<Hide status nickname>/ ? true : false
+  end
+  
+  def hide_status_classname
+    note =~ /<Hide status classname>/ ? true : false
+  end
 end
 
 module Cache
@@ -698,7 +705,7 @@ class Game_Actor < Game_Battler
   alias fog_er element_rate
   def element_rate(element_id)
     # get the value of the actor's element rate
-    value = features_pi(FEATURE_ELEMENT_RATE, element_id)
+    value = fog_er(element_id)
     if !persona? && !@persona.nil?
       # get the actor's and persona's multiplier and add both of their element rate 
       # with their respective multiplier
@@ -712,7 +719,7 @@ class Game_Actor < Game_Battler
   alias fog_dr debuff_rate
   def debuff_rate(param_id)
     # get the value of the actor's debuff rate
-    value = features_pi(FEATURE_DEBUFF_RATE, param_id)
+    value = fog_dr(param_id)
     if !persona? && !@persona.nil?
       # get the actor's and persona's multiplier and add both of their debuff rate 
       # with their respective multiplier
@@ -814,6 +821,11 @@ class Game_Actor < Game_Battler
   def on_turn_end
     super
     # reset flag on turn end
+    @changed_persona = false
+  end
+  
+  def on_battle_end
+    super
     @changed_persona = false
   end
 end
@@ -1321,9 +1333,14 @@ class Window_Personas < Window_Command
   def draw_actor_simple_status(actor, x, y, enabled)
     change_color(normal_color, enabled)
     draw_actor_name(actor, x, y)
-    draw_actor_class(actor, x, y + line_height)
+    draw_arcana_name(actor.arcana_name, x, y + line_height)
     draw_actor_level(actor, x, y + line_height * 2)
     change_color(normal_color)
+  end
+  
+  def draw_arcana_name(arcana_name, x, y, width = 112)
+    change_color(normal_color)
+    draw_text(x, y, width, line_height, arcana_name)
   end
   
   def draw_item_background(index)
@@ -1341,6 +1358,7 @@ class Window_Personas < Window_Command
   end
   
   def process_ok
+    return if @personas.size == 0
     Sound.play_ok
     Input.update
     deactivate
@@ -1446,8 +1464,8 @@ class Window_PersonaStatus < Window_Command
   
   def draw_block1(y)
     draw_actor_name(@persona, 4, y)
-    draw_actor_class(@persona, 128, y)
-    draw_actor_nickname(@persona, 288, y)
+    draw_actor_class(@persona, 128, y) if ! @persona.actor.hide_status_classname
+    draw_actor_nickname(@persona, 288, y) if ! @persona.actor.hide_status_nickname
   end
   
   def draw_block2(y)
@@ -1552,9 +1570,9 @@ class Window_PersonaStatus < Window_Command
       draw_icon(icons[i], new_x, y)
       if @persona.element_rate(i+1) == 1.0
         draw_normal_ele_icon(new_x, y)
-      elsif @persona.element_rate(i+1) > 1.0
-        draw_strong_ele_icon(new_x, y)
       elsif @persona.element_rate(i+1) < 1.0
+        draw_strong_ele_icon(new_x, y)
+      elsif @persona.element_rate(i+1) > 1.0
         draw_weak_ele_icon(new_x, y)
       end
     end
@@ -1733,7 +1751,7 @@ class Scene_Personas < Scene_Base
     @personas_window.redraw_item(prev_persona_index) if !prev_persona_index.nil?
     #equip new persona
     if @status_window.active
-      @actor.change_persona(@persona)
+      @actor.change_persona(@status_window.persona)
     else
       @actor.change_persona(@personas_window.current_persona)
     end
@@ -4216,7 +4234,7 @@ class Scene_Shuffle < Scene_Base
   def create_acceptance_window
     @acceptance_window = Window_AcceptShuffle.new
     @acceptance_window.set_handler(:accept,   method(:start_shuffle_time))
-    @acceptance_window.set_handler(:cancel,   method(:cancel_shuffle))
+    @acceptance_window.set_handler(:decline,   method(:cancel_shuffle))
     @acceptance_window.open
   end
   
@@ -4309,9 +4327,14 @@ class Scene_Shuffle < Scene_Base
   end
   
   def cancel_shuffle
-    @last_bgm.replay
-    @last_bgs.replay
+    on_shuffle_end
     SceneManager.return
+    @cards.each{|c| c.dispose}
+    @background_sprite.dispose
+    @cards = []
+    @background_sprite = nil
+    @acceptance_window.dispose
+    @acceptance_window = nil
   end
   
   def create_background
@@ -4570,12 +4593,16 @@ class Scene_Shuffle < Scene_Base
       persona = $data_actors.find{ |p| !p.nil? && p.name == @card_selected.card }
       $game_party.add_persona(persona.id)
     end
-    @last_bgm.replay
-    @last_bgs.replay
-    $game_system.shuffle_result = @card_selected.nil? ? "" : @card_selected.card
+    on_shuffle_end
     SceneManager.return
     Graphics.fadeout(30)
     terminate
+  end
+  
+  def on_shuffle_end
+    @last_bgm.replay
+    @last_bgs.replay
+    $game_system.shuffle_result = @card_selected.nil? ? "" : @card_selected.card
   end
   
   def create_main_viewport
@@ -4754,3 +4781,4 @@ class Scene_Shuffle < Scene_Base
     return movement_path
   end
 end
+
