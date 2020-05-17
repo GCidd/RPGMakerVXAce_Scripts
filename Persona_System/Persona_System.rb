@@ -253,19 +253,26 @@ module Persona
   # name of the button images displayed in the persona list menu window
   SELECT_PERSONA_BUTTON_IMG_NAME = "select_persona_button"
   EQUIP_PERSONA_BUTTON_IMG_NAME = "equip_persona_button"
+  RELEASE_PERSONA_BUTTON_IMG_NAME = "release_persona_button"
   
   # better keep a space at the beginning of the text
   SELECT_PERSONA_TEXT = " Show status"
   EQUIP_PERSONA_TEXT = " Equip persona"
+  RELEASE_PERSONA_TEXT = " Release persona"
   # written on actor's personas list when no personas are available
   NO_PERSONAS_MSG = "No available personas."
   
   # key used to equip persona
   EQUIP_PERSONA_KEY = :X
+  RELEASE_PERSONA_KEY = :R
   
   # ids of the default users for a persona that has no users specified
   # can be an empty list
   DEFAULT_PERSONA_USERS = [1]
+  
+  # if true user can remove personas from actors that can use only one persona
+  CAN_RELEASE_ONLY_PERSONAS = false
+  PERSONA_RELEASE_SOUND = ["Audio/SE/Evasion1", 100, 100]
   
   # if true then skills of both user and persona will appear under user's skill
   # list
@@ -1284,7 +1291,12 @@ class Window_Personas < Window_Command
   def process_handling
     return unless open? && active
     return process_equip if equip_enabled? && Input.trigger?(EQUIP_PERSONA_KEY)
+    return process_release if handle?(:release)   && Input.trigger?(RELEASE_PERSONA_KEY)
     super
+  end
+  
+  def process_release
+    call_handler(:release)
   end
   
   def process_equip
@@ -1308,6 +1320,7 @@ class Window_Personas < Window_Command
   def refresh
     super
     contents.clear
+    @personas = $game_party.actors_personas(@actor.id)
     draw_all_items
   end
   
@@ -1422,7 +1435,12 @@ class Window_PersonaStatus < Window_Command
     return unless open? && active
     return process_equip if equip_enabled? && Input.trigger?(EQUIP_PERSONA_KEY)
     return process_cancel   if cancel_enabled?    && Input.trigger?(:B)
+    return process_release if handle?(:release)   && Input.trigger?(RELEASE_PERSONA_KEY)
     super
+  end
+  
+  def process_release
+    call_handler(:release)
   end
   
   def process_equip
@@ -1464,8 +1482,14 @@ class Window_PersonaStatus < Window_Command
   
   def draw_block1(y)
     draw_actor_name(@persona, 4, y)
+    # draw_arcana_name(@persona.arcana_name, 128, y)
     draw_actor_class(@persona, 128, y) if ! @persona.actor.hide_status_classname
     draw_actor_nickname(@persona, 288, y) if ! @persona.actor.hide_status_nickname
+  end
+  
+  def draw_arcana_name(arcana_name, x, y, width = 112)
+    change_color(normal_color)
+    draw_text(x, y, width, line_height, arcana_name)
   end
   
   def draw_block2(y)
@@ -1691,6 +1715,8 @@ class Scene_Personas < Scene_Base
     create_background
     @actor = $game_party.menu_actor
     @persona = @actor.persona
+    @choice = -1
+    @message_window = Window_Message.new
     create_personas_window
     create_buttons_window
     create_status_window
@@ -1715,6 +1741,7 @@ class Scene_Personas < Scene_Base
   def create_buttons_window
     @buttons_window = Window_Keys.new
     @buttons_window.open
+    @buttons_window.z = 98  # same layer as personas_window
   end
   
   def create_personas_window
@@ -1725,6 +1752,8 @@ class Scene_Personas < Scene_Base
     @personas_window.set_handler(:equip, method(:persona_equip))
     @personas_window.set_handler(:pagedown, method(:next_actor))
     @personas_window.set_handler(:pageup,   method(:prev_actor))
+    @personas_window.set_handler(:release,   method(:release_persona))
+    @personas_window.z = 98 # behind status, message and choice window
     @personas_window.open
   end
   
@@ -1734,9 +1763,51 @@ class Scene_Personas < Scene_Base
     @status_window.set_handler(:equip, method(:persona_equip))
     @status_window.set_handler(:pagedown, method(:next_persona))
     @status_window.set_handler(:pageup,   method(:prev_persona))
+    @status_window.set_handler(:release,   method(:release_persona))
+    @status_window.z = 99 # behind message and choice window
     @status_window.open
   end
     
+  def wait_for_message
+    @message_window.update
+    update_for_wait while $game_message.busy?
+  end
+  
+  def update_for_wait
+    Graphics.update
+    Input.update
+    
+    $game_timer.update
+    @message_window.update
+  end
+  
+  def release_persona
+    return if @personas_window.current_persona.nil?
+    return if @choice == 0 # return if already accepted fusion
+    return if @actor.only_persona? && !Persona::CAN_RELEASE_ONLY_PERSONAS
+    persona = @personas_window.current_persona
+    $game_message.add("Are you sure you want to release the #{persona.name}")
+    $game_message.add("persona?")
+    $game_message.choices.push("Yes")
+    $game_message.choices.push("No")
+    $game_message.choice_cancel_type = 2
+    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    wait_for_message
+    if @choice == 0
+      Audio.se_play(*Persona::PERSONA_RELEASE_SOUND)
+      $game_message.add("#{persona.name} has been released.")
+      wait_for_message
+      $game_party.remove_persona(persona.id)
+      @personas_window.refresh
+      next_actor if @status_window.active
+      @choice = -1
+    else
+      @message_window.close
+      @choice = -1
+      return
+    end
+  end
+  
   def on_persona_ok
     @status_window.persona = @personas_window.current_persona
     @status_window.show.activate
@@ -2861,6 +2932,28 @@ class Window_SocialLinks < Window_Command
   end
 end
 
+class Sprite_SocialLink < Sprite
+  def initialize(viewport, name)
+    viewport.z = 100
+    super(viewport)
+    @name = name
+    update_bitmap
+  end
+  
+  def dispose
+    bitmap.dispose if bitmap
+    super
+  end
+  
+  def update_bitmap
+    if @name.nil?
+      self.bitmap = nil
+    else
+      self.bitmap = Cache.picture(@name)
+    end
+  end
+end
+
 class Scene_Arcanas < Scene_Base
   def start
     super
@@ -3146,10 +3239,11 @@ class RPG::Actor < RPG::BaseItem
   
   def are_special_parents(parents)
     s_p = special_fusion
+    return false if s_p.size == 0
     if Persona::ORDER_MATTERS
       return parents[0] == s_p[0] && parents[1] == s_p[1] && parents[2] == s_p[2]
     else
-      return parents.inject(true){|r, p| r && s_p.index(p).nil? }
+      return parents.inject(true){|r, p| r && !s_p.index(p).nil? }
     end
   end
 end
@@ -3274,15 +3368,20 @@ class Window_Fuse < Window_Command
     if @fuse_count == 2
       # normal fusion
       for parent_b in @personas
+        next if parent_b == parent_a
         child = $game_system.get_fusion_child(parent_a, parent_b)
         @children.push(child)
       end
     elsif @fuse_count == 3
       # special fusion
       for persona_c in @personas
-        special_parents = @selected_personas + [persona_c]
-        child = $game_system.get_special_fusion(special_parents)
-        @children.push(child)
+        if !@selected_personas.index(persona_c).nil?
+          @children.push(nil)
+        else
+          special_parents = @selected_personas + [persona_c]
+          child = $game_system.get_special_fusion(special_parents)
+          @children.push(child)
+        end
       end
     end
   end
@@ -3432,6 +3531,7 @@ class Window_Fuse < Window_Command
     return false if !@selected_personas.index(persona).nil?
     return true if @selected_personas.size == 0
     return true if @selected_personas.size < @fuse_count - 1
+    return false if $game_party.persona_in_party(@children[index].name) if !@children[index].nil?
     return !@children[index].nil?
   end
   
@@ -3520,13 +3620,19 @@ class Window_FuseResults < Window_Base
   def draw_persona_info(persona, x, y, enabled)
     offset_x = 0
     
-    draw_actor_class(persona, x + offset_x, y, 112, enabled)
+    draw_arcana_name(persona.arcana_name, x + offset_x, y)
+    
     offset_x += text_size(persona.arcana_name + " ").width
     
     draw_actor_level(persona, x + offset_x, y, enabled)
     offset_x += text_size(Vocab::level_a + persona.level.to_s + " ").width
     
     draw_actor_name(persona, x + offset_x, y, 112, enabled)
+  end
+  
+  def draw_arcana_name(arcana_name, x, y, width = 112)
+    change_color(normal_color)
+    draw_text(x, y, width, line_height, arcana_name)
   end
   
   def item_rect(index)
@@ -4146,6 +4252,221 @@ class Window_ShuffleMessage < Window_Message
     pos[:new_x] = 0
     pos[:height] = calc_line_height(text)
     clear_flags
+  end
+end
+
+class Sprite_Card < Sprite_Base
+  attr_accessor :card, :repeat_path, :tease
+  attr_reader :current_path, :path_indx
+  
+  def initialize(viewport, card)
+    super(viewport)
+    @card = card
+    @bitmap_name = @card
+    
+    # new
+    @path_indx = 0  # index of current location in the path list
+    @current_path = [] # current path to follow
+    @repeat_path = false  # repeat the path if reaches last position
+    @flip = false # flip the card (from face down to up and vice verse)
+    @tease = false  # shows the card for some frames and flips it back down
+    @back_bitmap = Persona::CARD_BACK_NAME  # name of bitmap for the back of the card
+    @match_selected = false # if true card is shown face up
+    @bitmap_changed = true
+    
+    @effect_duration = 0
+    @selected = false
+    @hidden = false
+  end
+
+  def match_selected?
+    return @match_selected
+  end
+  
+  def match_selected=(selected)
+    @match_selected = selected
+  end
+  
+  def current_path=(path)
+    @current_path = path
+    @path_indx = 0
+  end
+  
+  def cx
+    # center x of card bitmap relatively to current x location
+    self.x + self.bitmap.width / 2
+  end
+  
+  def cy
+    # center y of card bitmap relatively to current y location
+    self.y + self.bitmap.height / 2
+  end
+  
+  def starting_position(x, y)
+    self.x = x
+    self.y = y
+  end
+  
+  def dispose
+    bitmap.dispose if bitmap
+    super
+  end
+  
+  def update
+    super
+    if @card
+      update_bitmap if @bitmap_changed
+      update_flip if @flip
+      update_position
+      
+      update_effect
+    else
+      self.bitmap = nil
+      @effect_type = nil
+      @bitmap_changed = true
+    end
+  end
+  
+  def resize_bitmap(bitmap, new_width, new_height)
+    new_bitmap = Bitmap.new(new_width, new_height)
+    dest_rect = Rect.new(0, 0, new_width, new_height)
+    new_bitmap.stretch_blt(dest_rect, bitmap, bitmap.rect)
+    return new_bitmap
+  end
+  
+  def update_bitmap
+    new_bitmap = Cache.card(@bitmap_name)
+    self.bitmap = resize_bitmap(new_bitmap, new_bitmap.width, new_bitmap.height)
+    init_visibility
+    @bitmap_changed = false
+  end
+  
+  def init_visibility
+    @card_visible = true
+    self.opacity = 0 if !@card_visible
+  end
+  
+  def update_position
+    if @path_indx == @current_path.length - 1 && @repeat_path
+      @path_indx = 0
+    end
+    
+    new_pos = @current_path[@path_indx]
+    self.x = new_pos[0]
+    self.y = new_pos[1]
+    self.z = new_pos[2] unless new_pos[2].nil?
+    
+    # zoom_x and zoom_y is calculated depending of the z position of the card
+    # to make it look like it has gone to the back
+    self.zoom_x = z / 110.0
+    self.zoom_y = z / 110.0
+    @path_indx += 1 if @path_indx < @current_path.length - 1
+  end
+  
+  def done_moving
+    return !@repeat_path && @path_indx == @current_path.length - 1
+  end
+
+  def teasing?
+    return @effect_type == :tease
+  end
+
+  def flipping?
+    return @effect_type == :flip
+  end
+  
+  def start_effect(effect_type)
+    @effect_type = effect_type
+    case @effect_type
+    when :appear
+      @effect_duration = 16
+      @card_visible = true
+    when :disappear
+      @effect_duration = 16
+      @card_visible = false
+    when :matching_selected
+      @effect_duration = 50 if @effect_duration == 0
+      @card_visible = true
+    when :tease
+      @effect_duration = 10
+      @card_visible = true
+    when :flip
+      @effect_duration = 6
+      @card_visible = true
+    end
+    revert_to_normal  if @effect_duration == 0
+  end
+  
+  def revert_to_normal
+    self.blend_type = 0
+    self.color.set(0, 0, 0, 0)
+    self.opacity = 255
+    self.src_rect.y = 0
+    @effect_type = nil
+  end
+  
+  def effect?
+    @effect_type != nil
+  end
+  
+  def update_effect
+    if @effect_duration > 0
+      @effect_duration -= 1
+      case @effect_type
+      when :appear
+        update_appear
+      when :disappear
+        update_disappear
+      when :matching_selected
+        update_matching_selected
+      when :tease
+        update_tease
+      when :flip
+        update_flip
+      end
+      @effect_type = nil if @effect_duration == 0
+    end
+  end
+  
+  def update_flip
+    self.flash(Color.new(255, 255, 255), 30) if @effect_duration == 5
+    if @effect_duration == 0
+      @bitmap_name = @bitmap_name == @back_bitmap ? @card : @back_bitmap # flip card. goes from @back_bitmap to card.name and vice versa
+      @flip = false
+      @bitmap_changed = true
+    end
+  end
+  
+  def update_tease
+    if @effect_duration == 9
+      self.flash(Color.new(255, 255, 255), 0)
+      @bitmap_name = @card
+      @bitmap_changed
+      @bitmap_changed = true
+    elsif @effect_duration == 0
+      self.flash(Color.new(255, 255, 255), 25)
+      @bitmap_name = @back_bitmap
+      @tease = false
+      @bitmap_changed = true
+    end
+  end
+  
+  def update_matching_selected
+    if @effect_duration > 25
+      red = (50 - @effect_duration) * 10
+      self.color.set(red, 0, 0, 128)
+    else
+      red = (25 - @effect_duration) * 10
+      self.color.set(250-red, 0, 0, 128)
+    end
+  end
+  
+  def update_appear
+    self.opacity = (16 - @effect_duration) * 16
+  end
+  
+  def update_disappear
+    self.opacity = 256 - (32 - @effect_duration) * 10
   end
 end
 
