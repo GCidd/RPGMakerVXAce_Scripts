@@ -1290,9 +1290,10 @@ class Window_Personas < Window_Command
   
   def process_handling
     return unless open? && active
+    super
+    return if @personas.empty?
     return process_equip if equip_enabled? && Input.trigger?(EQUIP_PERSONA_KEY)
     return process_release if handle?(:release)   && Input.trigger?(RELEASE_PERSONA_KEY)
-    super
   end
   
   def process_release
@@ -1322,6 +1323,7 @@ class Window_Personas < Window_Command
     contents.clear
     @personas = $game_party.actors_personas(@actor.id)
     draw_all_items
+    select_last
   end
   
   def draw_all_items
@@ -1782,12 +1784,15 @@ class Scene_Personas < Scene_Base
   end
   
   def release_persona
-    return if @personas_window.current_persona.nil?
     return if @choice == 0 # return if already accepted fusion
     return if @actor.only_persona? && !Persona::CAN_RELEASE_ONLY_PERSONAS
     persona = @personas_window.current_persona
-    $game_message.add("Are you sure you want to release the #{persona.name}")
-    $game_message.add("persona?")
+    actors_persona_msg = @actor.persona == persona ? "#{@actor.name}'s" : "the"
+    $game_message.add("Are you sure you want to release #{actors_persona_msg}")
+    $game_message.add("#{persona.name} #{Persona::PERSONA_MENU_NAME.downcase}?")
+    if @personas_window.personas.size == 1
+      $game_message.add("This is #{@actor.name}'s last #{Persona::PERSONA_MENU_NAME.downcase}!")
+    end
     $game_message.choices.push("Yes")
     $game_message.choices.push("No")
     $game_message.choice_cancel_type = 2
@@ -1799,7 +1804,7 @@ class Scene_Personas < Scene_Base
       wait_for_message
       $game_party.remove_persona(persona.id)
       @personas_window.refresh
-      next_actor if @status_window.active
+      next_persona if @status_window.active
       @choice = -1
     else
       @message_window.close
@@ -1837,6 +1842,7 @@ class Scene_Personas < Scene_Base
       # and the persona is equipped, skip to status window (does not show 
       # all personas that can be equipped by specific actor as he can only 
       # equip one and it is auto-equipped when added to the party)
+      @personas_window.actor = @actor
       @personas_window.deactivate
       @personas_window.hide
       @buttons_window.hide
@@ -3232,8 +3238,12 @@ class RPG::Actor < RPG::BaseItem
       # if order matters search for index of pair and return true if found
       return !parents_pairs.index([persona_a_id, persona_b_id]).nil?
     else
-      # sort each pair and search for index of pair provided
-      return !parents_pairs.map{|p| p.sort }.index([persona_a_id, persona_b_id].sort).nil?
+      for pair in parents_pairs
+        if pair.include?(persona_a_id) && pair.include?(persona_b_id)
+          return true
+        end
+      end
+      return false
     end
   end
   
@@ -3242,8 +3252,8 @@ class RPG::Actor < RPG::BaseItem
     return false if s_p.size == 0
     if Persona::ORDER_MATTERS
       return parents[0] == s_p[0] && parents[1] == s_p[1] && parents[2] == s_p[2]
-    else
-      return parents.inject(true){|r, p| r && !s_p.index(p).nil? }
+    else      
+      return s_p.include?(parents[0]) && s_p.include?(parents[1]) && s_p.include?(parents[2])
     end
   end
 end
@@ -3368,7 +3378,10 @@ class Window_Fuse < Window_Command
     if @fuse_count == 2
       # normal fusion
       for parent_b in @personas
-        next if parent_b == parent_a
+        if parent_b == parent_a
+          @children.push(nil)
+          next
+        end
         child = $game_system.get_fusion_child(parent_a, parent_b)
         @children.push(child)
       end
@@ -3528,10 +3541,15 @@ class Window_Fuse < Window_Command
   
   def current_item_enabled?
     persona = @personas[index]
+    # selected persona should not be nil
     return false if !@selected_personas.index(persona).nil?
+    # can call if its the first persona being selected
     return true if @selected_personas.size == 0
+    # can select persona only if number of selected personas is low enough
     return true if @selected_personas.size < @fuse_count - 1
-    return false if $game_party.persona_in_party(@children[index].name) if !@children[index].nil?
+    # cannot select persona if result exists in the party
+    return false if $game_party.persona_in_party(@children[index].name)
+    # can select as long as a child cna be created with this one
     return !@children[index].nil?
   end
   
@@ -3620,7 +3638,7 @@ class Window_FuseResults < Window_Base
   def draw_persona_info(persona, x, y, enabled)
     offset_x = 0
     
-    draw_arcana_name(persona.arcana_name, x + offset_x, y)
+    draw_arcana_name(persona.arcana_name, x + offset_x, y, 112, enabled)
     
     offset_x += text_size(persona.arcana_name + " ").width
     
@@ -3630,8 +3648,8 @@ class Window_FuseResults < Window_Base
     draw_actor_name(persona, x + offset_x, y, 112, enabled)
   end
   
-  def draw_arcana_name(arcana_name, x, y, width = 112)
-    change_color(normal_color)
+  def draw_arcana_name(arcana_name, x, y, width = 112, enabled=true)
+    change_color(normal_color, enabled)
     draw_text(x, y, width, line_height, arcana_name)
   end
   
@@ -3649,7 +3667,7 @@ class Window_FuseResults < Window_Base
     return if child.nil?
     rect = item_rect(index)
     users = $game_party.members.select{|m| !child.users.index(m.id).nil? }
-    enabled = true
+    enabled = !$game_party.persona_in_party(child.name)
     draw_item_background(index)
     draw_persona_info(child, rect.x, rect.y, enabled)
   end
