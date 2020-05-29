@@ -264,14 +264,14 @@ module Persona
   
   # key used to equip persona
   EQUIP_PERSONA_KEY = :X
-  RELEASE_PERSONA_KEY = :Z
+  RELEASE_PERSONA_KEY = :R
   
   # ids of the default users for a persona that has no users specified
   # can be an empty list
   DEFAULT_PERSONA_USERS = [1]
   
   # if true user can remove personas from actors that can use only one persona
-  CAN_RELEASE_ONLY_PERSONAS = true
+  CAN_RELEASE_ONLY_PERSONAS = false
   PERSONA_RELEASE_SOUND = ["Audio/SE/Evasion1", 100, 100]
   
   # if true then skills of both user and persona will appear under user's skill
@@ -1172,19 +1172,16 @@ class Window_Keys < Window_Base
     # determines window's size according to the size of the button images
     @select_button = Cache.persona_file(SELECT_PERSONA_BUTTON_IMG_NAME)
     @equip_button = Cache.persona_file(EQUIP_PERSONA_BUTTON_IMG_NAME)
-    @release_button = Cache.persona_file(RELEASE_PERSONA_BUTTON_IMG_NAME)
     # largest height and width between the two button images
-    height = [@select_button.height, @equip_button.height, @release_button.height].max
-    width = [@select_button.width, @equip_button.width, @release_button.width].max
+    height = [@select_button.height, @equip_button.height].max
+    width = [@select_button.width, @equip_button.width].max
     # increase width by largest width between two texts
-    width += [text_size(SELECT_PERSONA_TEXT).width, 
-              text_size(EQUIP_PERSONA_TEXT).width,
-              text_size(RELEASE_PERSONA_TEXT).width].max
+    width += [text_size(SELECT_PERSONA_TEXT).width, text_size(EQUIP_PERSONA_TEXT).width].max
     
     # max width of window is half the width of the game window so that it doesn't
     # overlap with the personas window
     self.width = [width + standard_padding * 2, Graphics.width / 2].min
-    self.height = height * 3 + line_height + standard_padding * 2
+    self.height = height * 2 + line_height + standard_padding
     
     self.x = Graphics.width - self.width
     self.y = Graphics.height - self.height
@@ -1205,21 +1202,11 @@ class Window_Keys < Window_Base
     
     # draw bottom button (equip)
     x = @select_button.width
-    y += [btn_height, txt_height].max / 2
     txt_height = text_size(EQUIP_PERSONA_TEXT).height
     btn_height = @equip_button.height
-    y += [txt_height, btn_height].max / 2
+    y = contents.height / 2 + [txt_height, btn_height].max / 2
     contents.blt(0, y - btn_height / 2, @equip_button, @equip_button.rect)
     draw_text(x, y - txt_height / 2, self.width - x - standard_padding, line_height, EQUIP_PERSONA_TEXT)
-    
-    # draw bottom button (release)
-    x = @release_button.width
-    y += [btn_height, txt_height].max / 2
-    txt_height = text_size(RELEASE_PERSONA_TEXT).height
-    btn_height = @release_button.height
-    y += [txt_height, btn_height].max / 2
-    contents.blt(0, y - btn_height / 2, @release_button, @release_button.rect)
-    draw_text(x, y - txt_height / 2, self.width - x - standard_padding, line_height, RELEASE_PERSONA_TEXT)
   end
 end
 
