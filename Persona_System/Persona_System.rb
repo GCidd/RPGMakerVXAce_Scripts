@@ -28,6 +28,10 @@
 # To apply a minimum player level requirement  for a specific persona
 # you use the following tag:
 #        <Player level: level>
+# You can also have a persona of a specific arcana have a different class! 
+# This can be done just by setting its  nickname to the arcana you want! 
+# Don't forget to use the following tag to hide its nickname in the status window! 
+# \C[24]<Hide status nickname>\C[0].
 # ------------------------------------------------------------------------------
 # Tags on actors (that use personas)
 # ==============================================================================
@@ -77,14 +81,14 @@
 # ------------------------------------------------------------------------------
 # Add persona to party
 # ==============================================================================
-# You can add a persona to your party by calling the following script:
-#        $game_party.add_persona(actor_id)
+# You can add a persona to your party by calling the following script (by id):
+#        $game_party.add_persona_by_id(actor_id)
+# of by using the following one (by name):
+#        $game_party.add_persona_by_name("actor_name")
 # It is important to remember that you cannot have duplicate personas in
-# your party! Also, for developing purposes a message box will be displayed
-# if you try adding an actor as a persona that is not actually a persona!
-# Personas can also be acquired through the Shuffle Time that happens after
-# a battle and if the enemy troop has dropped any cards. You can learn
-# more about Shuffle Time by going to the back of the room.
+# your party! Also, for developing purposes a message box will be displayed 
+# if you try adding an actor as a persona that is not actually a persona! 
+# a persona or if you misstype a name by accident!
 # ------------------------------------------------------------------------------
 # Remove social link through variable
 # ==============================================================================
@@ -264,14 +268,14 @@ module Persona
   
   # key used to equip persona
   EQUIP_PERSONA_KEY = :X
-  RELEASE_PERSONA_KEY = :R
+  RELEASE_PERSONA_KEY = :Z
   
   # ids of the default users for a persona that has no users specified
   # can be an empty list
   DEFAULT_PERSONA_USERS = [1]
   
   # if true user can remove personas from actors that can use only one persona
-  CAN_RELEASE_ONLY_PERSONAS = false
+  CAN_RELEASE_ONLY_PERSONAS = true
   PERSONA_RELEASE_SOUND = ["Audio/SE/Evasion1", 100, 100]
   
   # if true then skills of both user and persona will appear under user's skill
@@ -476,7 +480,12 @@ module Persona
   PENALTY_CARD_DRAW_MSG = "You drew a Penalty Card..."
   # message displayed in the battle results when the penalty card is drawn
   PENALTY_CARD_RESULT_MSG = "All the rewards you gained from this battle \nhave vanished..."
-
+  
+  # message displayed when the party already has the drawn persona
+  DUPLICATE_PERSONA_DRAW_MSG = "You drew a card of the Persona %s!\nBut you already have this Persona..."
+  # message displayed in the battle results when the party already has the drawn persona
+  DUPLICATE_PERSONA_RESULT_MSG = ""
+  
   # message that is displayed when a card is picked. must have the %s which 
   # is where the persona's name will be put
   PERSONA_CARD_DRAW_MSG = "You drew a card of the Persona %s!"
@@ -489,6 +498,7 @@ module Persona
   SHUFFLE_PENALTY_SOUND = ["Audio/SE/Collapse1", 100, 100]
   SHUFFLE_BLANK_SOUND = ["Audio/SE/Blind", 100, 100] # same sound plays for no card too
   SHUFFLE_CARD_SOUND = ["Audio/SE/Applause2", 100, 100]
+  SHUFFLE_DUPLICATE_SOUND = ["Audio/SE/Blind", 100, 100]  # persona already in party sound
   
   # you can change the method below and make it decide the shuffle method
   # however you want
@@ -558,10 +568,6 @@ class RPG::Actor < RPG::BaseItem
   
   def hide_status_nickname
     note =~ /<Hide status nickname>/ ? true : false
-  end
-  
-  def hide_status_classname
-    note =~ /<Hide status classname>/ ? true : false
   end
 end
 
@@ -716,8 +722,8 @@ class Game_Actor < Game_Battler
     if !persona? && !@persona.nil?
       # get the actor's and persona's multiplier and add both of their element rate 
       # with their respective multiplier
-      user_mult = USER_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? USER_ELEMENT_RATE_MULTIPLIER[xparam_id] : USER_ELEMENT_RATE_MULTIPLIER
-      persona_mult = PERSONA_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_ELEMENT_RATE_MULTIPLIER[xparam_id] : PERSONA_ELEMENT_RATE_MULTIPLIER
+      user_mult = USER_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? USER_ELEMENT_RATE_MULTIPLIER[element_id] : USER_ELEMENT_RATE_MULTIPLIER
+      persona_mult = PERSONA_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_ELEMENT_RATE_MULTIPLIER[element_id] : PERSONA_ELEMENT_RATE_MULTIPLIER
       value = (value * user_mult) + (@persona.features_pi(FEATURE_ELEMENT_RATE, element_id) * persona_mult)
     end
     return value
@@ -730,8 +736,8 @@ class Game_Actor < Game_Battler
     if !persona? && !@persona.nil?
       # get the actor's and persona's multiplier and add both of their debuff rate 
       # with their respective multiplier
-      user_mult = USER_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? USER_DEBUFF_RATE_MULTIPLIER[xparam_id] : USER_DEBUFF_RATE_MULTIPLIER
-      persona_mult = PERSONA_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_DEBUFF_RATE_MULTIPLIER[xparam_id] : PERSONA_DEBUFF_RATE_MULTIPLIER
+      user_mult = USER_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? USER_DEBUFF_RATE_MULTIPLIER[param_id] : USER_DEBUFF_RATE_MULTIPLIER
+      persona_mult = PERSONA_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_DEBUFF_RATE_MULTIPLIER[param_id] : PERSONA_DEBUFF_RATE_MULTIPLIER
       value = (value * user_mult) + (@persona.features_pi(FEATURE_DEBUFF_RATE, param_id) * persona_mult)
     end
     return value
@@ -744,8 +750,8 @@ class Game_Actor < Game_Battler
     if !persona? && !@persona.nil?
       # get the actor's and persona's multiplier and add both of their state rate 
       # with their respective multiplier
-      user_mult = USER_STATE_RATE_MULTIPLIER.is_a?(Array) ? USER_STATE_RATE_MULTIPLIER[xparam_id] : USER_STATE_RATE_MULTIPLIER
-      persona_mult = PERSONA_STATE_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_STATE_RATE_MULTIPLIER[xparam_id] : PERSONA_STATE_RATE_MULTIPLIER
+      user_mult = USER_STATE_RATE_MULTIPLIER.is_a?(Array) ? USER_STATE_RATE_MULTIPLIER[state_id] : USER_STATE_RATE_MULTIPLIER
+      persona_mult = PERSONA_STATE_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_STATE_RATE_MULTIPLIER[state_id] : PERSONA_STATE_RATE_MULTIPLIER
       value = (value * user_mult) + (@persona.features_pi(FEATURE_STATE_RATE, state_id) * persona_mult)
     end
     return value
@@ -887,10 +893,20 @@ class Game_Party < Game_Unit
     end
   end
   
-  def add_persona(persona_id)
+  def add_persona_by_name(persona_name)
+    persona = $data_actors.find{|a| !a.nil? && a.name == persona_name}
+    if persona.nil?
+      msgbox("There was an attempt to add a persona with an incorrect name (#{persona_name})")
+      return
+    end
+    add_persona_by_id(persona.id)
+  end
+  
+  def add_persona_by_id(persona_id)
     # inform user (script user) about the mistake just in case
     if $game_personas[persona_id].nil?
-      msgbox("There was an attempt to add a persona with an invalid ID (ID=#{persona_id})")
+      msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id})")
+      return
     end
     
     @personas.push(persona_id) if !@personas.include?(persona_id) && !$game_personas[persona_id].nil?
@@ -902,7 +918,12 @@ class Game_Party < Game_Unit
     $game_map.need_refresh = true
   end
   
-  def remove_persona(persona_id)
+  def remove_persona_by_name(persona_name)
+    persona = members.find{|m| !m.persona.nil? && m.persona.name == persona_name}
+    remove_persona_by_id(persona.id)
+  end
+  
+  def remove_persona_by_id(persona_id)
     # unequip persona
     user = members.find{|m| !m.persona.nil? && m.persona.id == persona_id}
     user.remove_persona if !user.nil?
@@ -982,7 +1003,7 @@ class Window_ActorCommand < Window_Command
     ext = nil
     command = { :name=>name, 
                 :symbol=>:persona, 
-                :enabled=>@actor.can_change_persona, 
+                :enabled=>@actor.can_change_persona && !@actor.only_persona?, 
                 :ext=>ext}
     index = Persona::PERSONA_BATTLE_COMMAND_INDEX - 1
     index = [[0, index].max, @list.length].min
@@ -1082,6 +1103,7 @@ class Window_BattlePersonas < Window_Command
     if current_item_enabled?
       Sound.play_equip
       Input.update
+      deactivate
       call_equip_handler
     else
       Sound.play_buzzer
@@ -1089,10 +1111,10 @@ class Window_BattlePersonas < Window_Command
   end
   
   def call_equip_handler
-    call_handler(:ok)
+    call_handler(:equip)
   end
   def equip_enabled?
-    handle?(:ok)
+    handle?(:equip)
   end
   
   def draw_item_background(index)
@@ -1120,12 +1142,6 @@ class Window_BattlePersonas < Window_Command
     enabled = enable?(persona)
     draw_item_background(index)
     draw_persona_name_level(persona, rect, enabled)
-  end
-  
-  def process_ok
-    super
-    persona = @personas[index]
-    $game_party.menu_persona = persona
   end
   
   def select_last
@@ -1172,16 +1188,19 @@ class Window_Keys < Window_Base
     # determines window's size according to the size of the button images
     @select_button = Cache.persona_file(SELECT_PERSONA_BUTTON_IMG_NAME)
     @equip_button = Cache.persona_file(EQUIP_PERSONA_BUTTON_IMG_NAME)
+    @release_button = Cache.persona_file(RELEASE_PERSONA_BUTTON_IMG_NAME)
     # largest height and width between the two button images
-    height = [@select_button.height, @equip_button.height].max
-    width = [@select_button.width, @equip_button.width].max
+    height = [@select_button.height, @equip_button.height, @release_button.height].max
+    width = [@select_button.width, @equip_button.width, @release_button.width].max
     # increase width by largest width between two texts
-    width += [text_size(SELECT_PERSONA_TEXT).width, text_size(EQUIP_PERSONA_TEXT).width].max
+    width += [text_size(SELECT_PERSONA_TEXT).width, 
+              text_size(EQUIP_PERSONA_TEXT).width,
+              text_size(RELEASE_PERSONA_TEXT).width].max
     
     # max width of window is half the width of the game window so that it doesn't
     # overlap with the personas window
     self.width = [width + standard_padding * 2, Graphics.width / 2].min
-    self.height = height * 2 + line_height + standard_padding
+    self.height = height * 3 + line_height + standard_padding * 2
     
     self.x = Graphics.width - self.width
     self.y = Graphics.height - self.height
@@ -1202,11 +1221,21 @@ class Window_Keys < Window_Base
     
     # draw bottom button (equip)
     x = @select_button.width
+    y += [btn_height, txt_height].max / 2
     txt_height = text_size(EQUIP_PERSONA_TEXT).height
     btn_height = @equip_button.height
-    y = contents.height / 2 + [txt_height, btn_height].max / 2
+    y += [txt_height, btn_height].max / 2
     contents.blt(0, y - btn_height / 2, @equip_button, @equip_button.rect)
     draw_text(x, y - txt_height / 2, self.width - x - standard_padding, line_height, EQUIP_PERSONA_TEXT)
+    
+    # draw bottom button (release)
+    x = @release_button.width
+    y += [btn_height, txt_height].max / 2
+    txt_height = text_size(RELEASE_PERSONA_TEXT).height
+    btn_height = @release_button.height
+    y += [txt_height, btn_height].max / 2
+    contents.blt(0, y - btn_height / 2, @release_button, @release_button.rect)
+    draw_text(x, y - txt_height / 2, self.width - x - standard_padding, line_height, RELEASE_PERSONA_TEXT)
   end
 end
 
@@ -1484,8 +1513,8 @@ class Window_PersonaStatus < Window_Command
   
   def draw_block1(y)
     draw_actor_name(@persona, 4, y)
-    # draw_arcana_name(@persona.arcana_name, 128, y)
-    draw_actor_class(@persona, 128, y) if ! @persona.actor.hide_status_classname
+    draw_arcana_name(@persona.arcana_name, 128, y)
+    # draw_actor_class(@persona, 128, y)
     draw_actor_nickname(@persona, 288, y) if ! @persona.actor.hide_status_nickname
   end
   
@@ -1652,18 +1681,18 @@ class Scene_Battle < Scene_Base
   def command_persona
     @persona_window = Window_BattlePersonas.new(BattleManager.actor)
     @persona_window.select_last
-    @persona_window.set_handler(:ok, method(:on_persona_ok))
+    @persona_window.set_handler(:equip, method(:on_persona_equip))
     @persona_window.set_handler(:cancel, method(:on_persona_cancel))
   end
   
-  def on_persona_ok
+  def on_persona_equip
     persona = @persona_window.item
     BattleManager.actor.change_persona(persona)
     BattleManager.actor.refresh
-    @persona_window.hide
     @actor_command_window.activate
     @actor_command_window.refresh_persona_change
     @status_window.refresh
+    @persona_window.hide
   end
   
   def on_persona_cancel
@@ -1786,7 +1815,11 @@ class Scene_Personas < Scene_Base
   def release_persona
     return if @choice == 0 # return if already accepted fusion
     return if @actor.only_persona? && !Persona::CAN_RELEASE_ONLY_PERSONAS
-    persona = @personas_window.current_persona
+    if @status_window.active
+      persona = @status_window.persona
+    else
+      persona = @personas_window.current_persona
+    end
     actors_persona_msg = @actor.persona == persona ? "#{@actor.name}'s" : "the"
     $game_message.add("Are you sure you want to release #{actors_persona_msg}")
     $game_message.add("#{persona.name} #{Persona::PERSONA_MENU_NAME.downcase}?")
@@ -1834,6 +1867,7 @@ class Scene_Personas < Scene_Base
     #redrwa that item
     index = @personas_window.personas.index(@actor.persona)
     @personas_window.redraw_item(index)
+    $game_party.menu_persona = @actor.persona
   end
   
   def on_actor_change
@@ -2595,7 +2629,7 @@ class Window_Arcanas < Window_Command
     select_last
     @selected_arcana = nil
     self.openness = 0
-    
+    select_last
   end
   
   def load_bitmaps
@@ -2618,6 +2652,7 @@ class Window_Arcanas < Window_Command
   def refresh
     contents.clear
     draw_all_items
+    select_last
   end
   
   def window_width
@@ -2642,6 +2677,13 @@ class Window_Arcanas < Window_Command
   
   def item_max
     @arcanas.size
+  end
+  
+  def process_handling
+    return unless open? && active
+    return process_cancel   if cancel_enabled?    && Input.trigger?(:B)
+    return if @arcanas.empty?
+    return process_ok       if ok_enabled?        && Input.trigger?(:C)
   end
   
   def process_ok
@@ -2739,10 +2781,10 @@ class Window_Arcanas < Window_Command
   end
   
   def select_last
-    if $game_party.menu_persona.nil?
-      select(0)
+    if @arcanas.empty?
+      select(-1)
     else
-      select($game_party.menu_persona.index || 0)
+      select(0)
     end
   end
   
@@ -3296,7 +3338,7 @@ class Window_ExtraExp < Window_Base
     super(x, y, 180, height)
     @current_exp = 0
     @exp_changed = false
-    self.visible = false
+    self.openness = 0
   end
   
   def set_width(txt)
@@ -3547,10 +3589,9 @@ class Window_Fuse < Window_Command
     return true if @selected_personas.size == 0
     # can select persona only if number of selected personas is low enough
     return true if @selected_personas.size < @fuse_count - 1
-    # cannot select persona if result exists in the party
-    return false if $game_party.persona_in_party(@children[index].name)
-    # can select as long as a child cna be created with this one
-    return !@children[index].nil?
+    # as long as a child can be created with this one and 
+    # the result does not exist in the party
+    return !@children[index].nil? && !$game_party.persona_in_party(@children[index].name)
   end
   
   def select_last
@@ -3795,6 +3836,7 @@ class Scene_Fuse < Scene_Base
     # called when viewing a persona's status and returns to fuse windows
     @status_window.set_handler(:cancel,   method(:return_status))
     @status_window.deactivate
+    @status_window.close
     @status_window.z -= 1
   end
   
@@ -3805,6 +3847,7 @@ class Scene_Fuse < Scene_Base
   
   def wait_for_message
     @status_window.deactivate
+    @message_window.open
     @message_window.activate
     @message_window.update
     update_basic while $game_message.visible
@@ -3823,7 +3866,7 @@ class Scene_Fuse < Scene_Base
     return if @message_window.open?
     @status_window.deactivate
     @status_window.hide
-    @extra_exp_window.hide
+    @extra_exp_window.close
     
     @fuse_window.activate
     @fuse_window.selected_personas.pop if @fuse_window.selected_personas.length == $game_system.fuse_count
@@ -3861,9 +3904,8 @@ class Scene_Fuse < Scene_Base
     @extra_exp_window.text = txt
     @extra_exp_window.exp = bonus_exp
     @extra_exp_window.set_width("Bonus EXP:#{bonus_exp}")
-    
-    @status_window.show.activate
-    @extra_exp_window.show
+    @extra_exp_window.show.open
+    @status_window.show.open
   end
   
   def wait_for_exp
@@ -3901,15 +3943,19 @@ class Scene_Fuse < Scene_Base
       end
       $game_party.add_persona(@status_window.persona.id)
       
-      @extra_exp_window.hide
-      @status_window.hide
+      @extra_exp_window.close
+      @status_window.close
       @results_window.children = []
       @fuse_window.reset
       @choice = -1
     else
       @message_window.close
+      @status_window.close
+      @extra_exp_window.close
       @choice = -1
       @fuse_window.remove_last_persona
+      @fuse_window.activate
+      @fuse_window.refresh
       return
     end
   end
@@ -3984,6 +4030,8 @@ module BattleManager
           $game_message.add(NO_CARD_RESULT_MSG)
         elsif $game_system.shuffle_result == "Blank"
           $game_message.add(BLANK_CARD_RESULT_MSG)
+        elsif $game_system.shuffle_result == "Duplicate"
+          $game_message.add(DUPLICATE_PERSONA_RESULT_MSG)
         end
         persona_shuffle_pv
       end
@@ -4010,7 +4058,7 @@ module BattleManager
     
     def wait_for_shuffle
       # wait for shuffle_time to finish
-      SceneManager.scene.update while SceneManager.scene_is?(Scene_Shuffle)
+      SceneManager.scene.main
       Graphics.transition(30)
     end
   end
@@ -4274,13 +4322,13 @@ class Window_ShuffleMessage < Window_Message
 end
 
 class Sprite_Card < Sprite_Base
-  attr_accessor :card, :repeat_path, :tease
+  attr_accessor :card_name, :repeat_path, :tease, :card_index
   attr_reader :current_path, :path_indx
   
-  def initialize(viewport, card)
+  def initialize(viewport, card_name)
     super(viewport)
-    @card = card
-    @bitmap_name = @card
+    @card_name = card_name
+    @bitmap_name = @card_name
     
     # new
     @path_indx = 0  # index of current location in the path list
@@ -4292,9 +4340,10 @@ class Sprite_Card < Sprite_Base
     @match_selected = false # if true card is shown face up
     @bitmap_changed = true
     
+    @card_index = -1
+    @on_path_end = nil
+    
     @effect_duration = 0
-    @selected = false
-    @hidden = false
   end
 
   def match_selected?
@@ -4308,6 +4357,10 @@ class Sprite_Card < Sprite_Base
   def current_path=(path)
     @current_path = path
     @path_indx = 0
+  end
+  
+  def on_path_end=(on_end)
+    @on_path_end = on_end
   end
   
   def cx
@@ -4332,7 +4385,7 @@ class Sprite_Card < Sprite_Base
   
   def update
     super
-    if @card
+    if @card_name
       update_bitmap if @bitmap_changed
       update_flip if @flip
       update_position
@@ -4345,10 +4398,18 @@ class Sprite_Card < Sprite_Base
     end
   end
   
+  def resize_for_slots
+    new_bitmap = Cache.card(@bitmap_name)
+    new_width = new_bitmap.width*Persona::SLOT_CARD_SIZE_FACTOR
+    new_height = new_bitmap.height*Persona::SLOT_CARD_SIZE_FACTOR
+    self.bitmap = resize_bitmap(new_bitmap, new_width, new_height)
+    init_visibility
+    @bitmap_changed = false
+  end
+  
   def resize_bitmap(bitmap, new_width, new_height)
     new_bitmap = Bitmap.new(new_width, new_height)
-    dest_rect = Rect.new(0, 0, new_width, new_height)
-    new_bitmap.stretch_blt(dest_rect, bitmap, bitmap.rect)
+    new_bitmap.stretch_blt(new_bitmap.rect, bitmap, bitmap.rect)
     return new_bitmap
   end
   
@@ -4365,10 +4426,6 @@ class Sprite_Card < Sprite_Base
   end
   
   def update_position
-    if @path_indx == @current_path.length - 1 && @repeat_path
-      @path_indx = 0
-    end
-    
     new_pos = @current_path[@path_indx]
     self.x = new_pos[0]
     self.y = new_pos[1]
@@ -4379,12 +4436,24 @@ class Sprite_Card < Sprite_Base
     self.zoom_x = z / 110.0
     self.zoom_y = z / 110.0
     @path_indx += 1 if @path_indx < @current_path.length - 1
+    
+    if @path_indx == @current_path.size - 1 
+      if @repeat_path
+        @path_indx = 0
+      else
+        @on_path_end.call(@card_index) if !@on_path_end.nil?
+      end
+    end
   end
   
   def done_moving
     return !@repeat_path && @path_indx == @current_path.length - 1
   end
-
+  
+  def dim_card
+    self.color.set(0, 0, 0, 128)
+  end
+  
   def teasing?
     return @effect_type == :tease
   end
@@ -4393,24 +4462,25 @@ class Sprite_Card < Sprite_Base
     return @effect_type == :flip
   end
   
+  def slotted?
+    return @effect_type == :slot_selected
+  end
+  
   def start_effect(effect_type)
     @effect_type = effect_type
     case @effect_type
     when :appear
       @effect_duration = 16
-      @card_visible = true
     when :disappear
       @effect_duration = 16
-      @card_visible = false
     when :matching_selected
       @effect_duration = 50 if @effect_duration == 0
-      @card_visible = true
     when :tease
       @effect_duration = 10
-      @card_visible = true
     when :flip
       @effect_duration = 6
-      @card_visible = true
+    when :slot_selected
+      @effect_duration = 50 if @effect_duration == 0
     end
     revert_to_normal  if @effect_duration == 0
   end
@@ -4441,6 +4511,8 @@ class Sprite_Card < Sprite_Base
         update_tease
       when :flip
         update_flip
+      when :slot_selected
+        update_slot_selected
       end
       @effect_type = nil if @effect_duration == 0
     end
@@ -4449,7 +4521,7 @@ class Sprite_Card < Sprite_Base
   def update_flip
     self.flash(Color.new(255, 255, 255), 30) if @effect_duration == 5
     if @effect_duration == 0
-      @bitmap_name = @bitmap_name == @back_bitmap ? @card : @back_bitmap # flip card. goes from @back_bitmap to card.name and vice versa
+      @bitmap_name = @bitmap_name == @back_bitmap ? @card_name : @back_bitmap # flip card. goes from @back_bitmap to card.name and vice versa
       @flip = false
       @bitmap_changed = true
     end
@@ -4458,7 +4530,7 @@ class Sprite_Card < Sprite_Base
   def update_tease
     if @effect_duration == 9
       self.flash(Color.new(255, 255, 255), 0)
-      @bitmap_name = @card
+      @bitmap_name = @card_name
       @bitmap_changed
       @bitmap_changed = true
     elsif @effect_duration == 0
@@ -4474,8 +4546,18 @@ class Sprite_Card < Sprite_Base
       red = (50 - @effect_duration) * 10
       self.color.set(red, 0, 0, 128)
     else
-      red = (25 - @effect_duration) * 10
-      self.color.set(250-red, 0, 0, 128)
+      red = @effect_duration * 10
+      self.color.set(red, 0, 0, 128)
+    end
+  end
+  
+  def update_slot_selected
+    if @effect_duration > 25
+      blue = (50 - @effect_duration) * 7
+      self.color.set(0, 0, blue, 128)
+    else
+      blue = @effect_duration * 6
+      self.color.set(0, 0, blue, 128)
     end
   end
   
@@ -4505,7 +4587,7 @@ class Scene_Shuffle < Scene_Base
   def terminate
     super
     @cards.each{|c| c.dispose}
-    @background_sprite.dispose
+    @background_sprite.dispose if !@background_sprite.nil?
   end
   
   def start_cards_appear
@@ -4557,23 +4639,32 @@ class Scene_Shuffle < Scene_Base
       card_items = $game_variables[SHUFFLE_ITEMS_VAR_ID]
       $game_variables[SHUFFLE_ITEMS_VAR_ID] = nil
       card_items = $game_system.filter_cards(card_items) if FILTER_MANUAL_CARDS
+      check_cards_personas(card_items)
     else
       card_items = BattleManager.cards_dropped
     end
     
     if card_items.nil? || card_items == 0
       msgbox("No cards were defined in variable with id #{SHUFFLE_ITEMS_VAR_ID} for the shuffle time!")
-      cancel_shuffle
-      return
     end
     
     @cards = card_items.collect{|c| Sprite_Card.new(@viewport, c) }
   end
   
+  def check_cards_personas(card_items)
+    for card_item in card_items
+      next if card_item == "Blank" || card_item ==  "Penalty"
+      actor = $data_actors.find{|a| !a.nil? && a.name == card_item}
+      if actor.nil?
+        msgbox("#{card_item} persona was not found in the actor database!")
+      end
+    end
+  end
+  
   def create_acceptance_window
     @acceptance_window = Window_AcceptShuffle.new
     @acceptance_window.set_handler(:accept,   method(:start_shuffle_time))
-    @acceptance_window.set_handler(:decline,   method(:cancel_shuffle))
+    @acceptance_window.set_handler(:decline,   method(:exit_shuffle))
     @acceptance_window.open
   end
   
@@ -4665,17 +4756,6 @@ class Scene_Shuffle < Scene_Base
     @card_indexes = @cards.each_with_index.collect{|n, i| [i/MAX_CARDS_PER_ROW, i%MAX_CARDS_PER_ROW]}
   end
   
-  def cancel_shuffle
-    on_shuffle_end
-    SceneManager.return
-    @cards.each{|c| c.dispose}
-    @background_sprite.dispose
-    @cards = []
-    @background_sprite = nil
-    @acceptance_window.dispose
-    @acceptance_window = nil
-  end
-  
   def create_background
     @background_sprite = Sprite.new
     if SHUFFLE_BACKGROUND
@@ -4687,6 +4767,7 @@ class Scene_Shuffle < Scene_Base
   
   def update
     super
+    SceneManager.return if @should_exit
     update_cards
     determine_loss_matching if @shuffle_method == "Matching"
     process_input if !teasing_phase
@@ -4704,7 +4785,7 @@ class Scene_Shuffle < Scene_Base
       $game_message.shuffle_add(MATCHING_LOSE_MESSAGE)
       wait_for_message
       SceneManager.return
-      finish_shuffle
+      show_results
     end
   end
   
@@ -4796,7 +4877,7 @@ class Scene_Shuffle < Scene_Base
     end
     
     @card_selected.start_effect(:flip)
-    finish_shuffle
+    show_results
   end
   
   def process_input_matching
@@ -4836,7 +4917,7 @@ class Scene_Shuffle < Scene_Base
           @counter_window.close
           show_selected_card
           
-          finish_shuffle
+          show_results
         else
           Sound.play_cancel
           @counter_window.tried
@@ -4904,44 +4985,57 @@ class Scene_Shuffle < Scene_Base
   def show_selected_card
     x1 = @card_selected.x
     y1 = @card_selected.y
-    x2 = @cx - @card_width / 2
+    # the multiplier is to center the card after the zoom effect form the z position
+    x2 = @cx - @card_width / 2 * (150.0/110.0)
     y2 = @cy - @card_height
     @card_selected.current_path = get_intermediate_points(x1, y1, x2, y2)
     @card_selected.repeat_path = false
     @card_selected.z = 150
   end
   
-  def finish_shuffle
+  def show_results
+    puts @card_selected.card_name if !@card_selected.nil?
+    if !@card_selected.nil?
+      persona = $data_actors.find{ |p| !p.nil? && p.name == @card_selected.card_name }
+    else
+      persona = nil
+    end
+    
     if @card_selected.nil?
       Audio.se_play(*SHUFFLE_BLANK_SOUND)
       $game_message.shuffle_add(NO_CARD_DRAW_MSG)
+      $game_system.shuffle_result = ""
       wait_for_message
-    elsif @card_selected.card == "Blank"
+    elsif @card_selected.card_name == "Blank"
       Audio.se_play(*SHUFFLE_BLANK_SOUND)
       $game_message.shuffle_add(BLANK_CARD_DRAW_MSG)
+      $game_system.shuffle_result = "Blank"
       wait_for_message
-    elsif @card_selected.card == "Penalty"
+    elsif @card_selected.card_name == "Penalty"
       Audio.se_play(*SHUFFLE_PENALTY_SOUND)
       $game_message.shuffle_add(PENALTY_CARD_DRAW_MSG)
+      $game_system.shuffle_result = "Penalty"
+      wait_for_message
+    elsif $game_party.persona_in_party(persona.name)
+      Audio.se_play(*SHUFFLE_DUPLICATE_SOUND)
+      $game_message.shuffle_add(sprintf(DUPLICATE_PERSONA_DRAW_MSG, @card_selected.card_name))
+      $game_system.shuffle_result = "Duplicate"
       wait_for_message
     elsif !@card_selected.nil?
       Audio.se_play(*SHUFFLE_CARD_SOUND)
-      $game_message.shuffle_add(sprintf(PERSONA_CARD_DRAW_MSG, @card_selected.card))
+      $game_message.shuffle_add(sprintf(PERSONA_CARD_DRAW_MSG, @card_selected.card_name))
+      $game_system.shuffle_result = persona.name
       wait_for_message
       
-      persona = $data_actors.find{ |p| !p.nil? && p.name == @card_selected.card }
       $game_party.add_persona(persona.id)
     end
-    on_shuffle_end
-    SceneManager.return
-    Graphics.fadeout(30)
-    terminate
+    exit_shuffle
   end
   
-  def on_shuffle_end
+  def exit_shuffle
     @last_bgm.replay
     @last_bgs.replay
-    $game_system.shuffle_result = @card_selected.nil? ? "" : @card_selected.card
+    SceneManager.return
   end
   
   def create_main_viewport
