@@ -3179,7 +3179,7 @@ class Game_Player < Game_Character
     $game_party.remove_persona(persona.id)
     evolved_persona = $data_actors.find{|a| !a.nil? && a.name == persona.evolve_to}
     evolved_persona = $game_personas[evolved_persona.id]
-    $game_party.add_persona(evolved_persona.id)
+    $game_party.add_persona_by_id(evolved_persona.id)
     $game_variables[EVOLVING_PERSONA_VAR_ID] = persona.name
     $game_variables[RESULTING_PERSONA_VAR_ID] = evolved_persona.name
     return evolved_persona
@@ -3941,7 +3941,7 @@ class Scene_Fuse < Scene_Base
       for persona in @fuse_window.selected_personas
         $game_party.remove_persona(persona.id)
       end
-      $game_party.add_persona(@status_window.persona.id)
+      $game_party.add_persona_by_id(@status_window.persona.id)
       
       @extra_exp_window.close
       @status_window.close
@@ -5027,7 +5027,7 @@ class Scene_Shuffle < Scene_Base
       $game_system.shuffle_result = persona.name
       wait_for_message
       
-      $game_party.add_persona(persona.id)
+      $game_party.add_persona_by_id(persona.id)
     end
     exit_shuffle
   end
