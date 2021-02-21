@@ -5,7 +5,7 @@ An old Action Battle System script I wrote several years ago.
 ## Key features
 (These are videos I was uploading during the development)
 ### Health bar - Damage and Healing animations
-######Pretty simple but noteworthy
+###### Pretty simple but noteworthy
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=lhzWLJMbRd4
 " target="_blank"><img src="http://img.youtube.com/vi/lhzWLJMbRd4/0.jpg" 
 alt="Health bar Damage and Heal" width="640" height="480" border="10" /></a>
