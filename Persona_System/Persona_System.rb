@@ -150,7 +150,7 @@
 # You can change the maximum number of tries the player has through
 # the options module! Also, you can force the next Shuffle Time method
 # to be a specific one (among the available) by setting the value of
-# the variable with ID 10 to the method you want. For example "Horizontal"
+# the variable with ID 1 to the method you want. For example "Horizontal"
 # if you want the next Shuffle Time method to be Horizontal or "Matching"
 # if you want it to be the Matching one. Of course, you can change which
 # variable you want to specify the method, though the options module.
@@ -287,8 +287,6 @@ module Persona
   PERSONA_SKILLS_COLOR = Color.new(0, 255, 0) # green
   # index from which the persona's skill commands start (for multiple skill types)
   PERSONA_SKILLS_COMMAND_INDEX = 4
-  # hides the persona command from actor ids
-  HIDE_PERSONA_COMMAND = [1]
 
 #-------------------------------------------------------------------------------
 #  ____  _    _ _ _   _____                    _   
@@ -333,7 +331,7 @@ module Persona
   
   # name of the social links in the menu
   ARCANA_MENU_NAME = "Social Links" # alternative name for Social Links
-  ARCANA_MENU_COMMAND_INDEX = 2 # set to nil to hide
+  ARCANA_MENU_COMMAND_INDEX = 2
   
   # file names for the arcana rank progression bar
   ARCANA_RANKS_BAR_IMG_NAME = "bar"
@@ -586,19 +584,6 @@ module DataManager
       persona_cgo
       $game_personas = Game_Personas.new
     end 
-    
-    alias persona_msc make_save_contents
-    def make_save_contents
-      contents = persona_msc
-      contents[:personas] = $game_personas
-      contents
-    end
-    
-    alias persona_esc extract_save_contents
-    def extract_save_contents(contents)
-      persona_esc(contents)
-      $game_personas = contents[:personas]
-    end
   end
 end
 
@@ -1014,7 +999,6 @@ class Window_ActorCommand < Window_Command
   end
   
   def add_persona_command
-    return if Persona::HIDE_PERSONA_COMMAND.include?(@actor.id)
     name = Persona::PERSONA_MENU_NAME
     ext = nil
     command = { :name=>name, 
@@ -2824,7 +2808,6 @@ class Window_MenuCommand < Window_Command
   end
   
   def add_arcana_command
-    return if Persona::ARCANA_MENU_COMMAND_INDEX.nil?
     # add arcana command to main menu
     name = Persona::ARCANA_MENU_NAME
     ext = nil
@@ -4674,7 +4657,6 @@ class Scene_Shuffle < Scene_Base
       actor = $data_actors.find{|a| !a.nil? && a.name == card_item}
       if actor.nil?
         msgbox("#{card_item} persona was not found in the actor database!")
-        exit_shuffle
       end
     end
   end
@@ -4730,8 +4712,8 @@ class Scene_Shuffle < Scene_Base
     # picks random cards and shows them for a short amount of frames
     @cards.sample(@cards.size/2).each{ |c| c.tease=true } 
     
-    # duplicates all the cards for the matching method
-    @cards.each{ |card| new_cards.push(Sprite_Card.new(@viewport, card.card_name)) }
+    # diplicates all the cards for the matching method
+    @cards.each{ |card| new_cards.push(Sprite_Card.new(@viewport, card.card)) }
     
     # shuffles all the cards, appends them together and shuffles them again
     @cards = @cards.shuffle + new_cards.shuffle
@@ -4785,6 +4767,7 @@ class Scene_Shuffle < Scene_Base
   
   def update
     super
+    SceneManager.return if @should_exit
     update_cards
     determine_loss_matching if @shuffle_method == "Matching"
     process_input if !teasing_phase
@@ -4797,12 +4780,11 @@ class Scene_Shuffle < Scene_Base
   
   def determine_loss_matching
     if @counter_window.lost?
-      (Graphics.frame_rate/2).times{update_matches }
-      
       @counter_window.close
       @message_window.z = 250
       $game_message.shuffle_add(MATCHING_LOSE_MESSAGE)
       wait_for_message
+      SceneManager.return
       show_results
     end
   end
@@ -4926,7 +4908,7 @@ class Scene_Shuffle < Scene_Base
         # show cards for half a second
         (Graphics.frame_rate / 2).to_i.times{ |i| update_for_matched }
         
-        if selected_cards[0].card_name != "Blank" && selected_cards[0].card_name == selected_cards[1].card_name
+        if selected_cards[0].card != "Blank" && selected_cards[0].card == selected_cards[1].card
           # keep selected cards face up and disappear all other
           @cards.each{|c| c.start_effect(:disappear) if !c.match_selected? }
           selected_cards[1].start_effect(:disappear)
@@ -5012,6 +4994,7 @@ class Scene_Shuffle < Scene_Base
   end
   
   def show_results
+    puts @card_selected.card_name if !@card_selected.nil?
     if !@card_selected.nil?
       persona = $data_actors.find{ |p| !p.nil? && p.name == @card_selected.card_name }
     else
@@ -5050,8 +5033,8 @@ class Scene_Shuffle < Scene_Base
   end
   
   def exit_shuffle
-    @last_bgm.replay if @last_bgm
-    @last_bgs.replay if @last_bgs
+    @last_bgm.replay
+    @last_bgs.replay
     SceneManager.return
   end
   
@@ -5068,7 +5051,7 @@ class Scene_Shuffle < Scene_Base
       card.current_path = [[x, y, z]]
       card.repeat_path = true
     end
-    create_shuffle_paths if @shuffle_method != "Matching"
+    create_shuffle_paths
   end
   
   def show_position(i, j, max_cols=MAX_CARDS_PER_ROW)
@@ -5118,14 +5101,7 @@ class Scene_Shuffle < Scene_Base
             @shuffle_paths.push(calculate_diagonal_path(rand > 0.5))
           end
         end
-      else
-        msgbox("
-        Undefined shuffle method #{@shuffle_method}.
-        Please use one of: \"Horizontal\", \"Diagonal\" or \"Combination\"
-        (Setting to \"Combination\")")
-        @shuffle_method = "Combination"
-        create_shuffle_paths
-      end
+    end
   end
   
   def calculate_horizontal_path
@@ -5238,3 +5214,4 @@ class Scene_Shuffle < Scene_Base
     return movement_path
   end
 end
+
