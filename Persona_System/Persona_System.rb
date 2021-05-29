@@ -1851,7 +1851,7 @@ class Scene_Personas < Scene_Base
       Audio.se_play(*Persona::PERSONA_RELEASE_SOUND)
       $game_message.add("#{persona.name} has been released.")
       wait_for_message
-      $game_party.remove_persona(persona.id)
+      $game_party.remove_persona_by_id(persona.id)
       @personas_window.refresh
       next_persona if @status_window.active
       @choice = -1
@@ -3193,7 +3193,7 @@ class Game_Player < Game_Character
   end
   
   def evolve_persona(persona)
-    $game_party.remove_persona(persona.id)
+    $game_party.remove_persona_by_id(persona.id)
     evolved_persona = $data_actors.find{|a| !a.nil? && a.name == persona.evolve_to}
     evolved_persona = $game_personas[evolved_persona.id]
     $game_party.add_persona_by_id(evolved_persona.id)
@@ -3956,7 +3956,7 @@ class Scene_Fuse < Scene_Base
       $game_message.add("Fused #{fusing} into\n#{@fuse_window.result.name}!")
       wait_for_message
       for persona in @fuse_window.selected_personas
-        $game_party.remove_persona(persona.id)
+        $game_party.remove_persona_by_id(persona.id)
       end
       $game_party.add_persona_by_id(@status_window.persona.id)
       
@@ -5238,3 +5238,4 @@ class Scene_Shuffle < Scene_Base
     return movement_path
   end
 end
+
