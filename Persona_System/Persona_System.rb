@@ -264,7 +264,7 @@ module Persona
   EQUIP_PERSONA_TEXT = " Equip persona"
   RELEASE_PERSONA_TEXT = " Release persona"
   # written on actor's personas list when no personas are available
-  NO_PERSONAS_MSG = "No available personas."
+  NO_PERSONAS_MSG = "No personas available."
   
   # key used to equip persona
   EQUIP_PERSONA_KEY = :X
@@ -1273,16 +1273,6 @@ class Window_MenuCommand < Window_Command
     index = Persona::PERSONA_MENU_COMMAND_INDEX - 1
     index = [index, @list.length].min
     @list.insert(index, command)
-  end
-end
-
-class Window_MenuStatus < Window_Selectable
-  def ok_enabled?
-    actor = $game_party.members[index]
-    # can't view persona's status for actor that can use only one persona and 
-    # that persona is not equipped
-    return false if actor.only_persona? && actor.persona.nil?
-    handle?(:ok)
   end
 end
 
@@ -5238,4 +5228,3 @@ class Scene_Shuffle < Scene_Base
     return movement_path
   end
 end
-
