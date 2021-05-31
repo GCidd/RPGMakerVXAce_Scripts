@@ -288,7 +288,7 @@ module Persona
   # index from which the persona's skill commands start (for multiple skill types)
   PERSONA_SKILLS_COMMAND_INDEX = 4
   # hides the persona command from actor ids
-  HIDE_PERSONA_COMMAND = [1]
+  HIDE_PERSONA_COMMAND = []
 
 #-------------------------------------------------------------------------------
 #  ____  _    _ _ _   _____                    _   
