@@ -25,5 +25,12 @@ alt="Skill Assigning and Casting" width="640" height="480" border="10" /></a>
 " target="_blank"><img src="http://img.youtube.com/vi/Si-fjO02wQA/0.jpg" 
 alt="Skill Casting" width="640" height="480" border="10" /></a>
 
+
+### Battle, Item Shortcut and usage
+<a href="https://www.youtube.com/watch?v=MYObMDPpF6U
+" target="_blank"><img src="http://img.youtube.com/vi/MYObMDPpF6U/0.jpg" 
+alt="Battle, Item Shortcut and usage" width="640" height="480" border="10" /></a>
+
+
 TODO:
 * Upload a playable demo and video of it.
