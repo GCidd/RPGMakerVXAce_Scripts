@@ -21,8 +21,6 @@
     - Fixed shuffle properly disposing background after showing result and during fadeout
     - Better transition into shuffle time
 
-![Fusion System Screenshot](./media/updates/fusion%20results.png)
-
 ### ⚗️ Advanced Fusion System
 
 ![Fusion System Screenshot](./media/updates/fusion%20results.png)
