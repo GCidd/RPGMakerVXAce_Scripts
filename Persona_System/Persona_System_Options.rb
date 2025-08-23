@@ -59,7 +59,7 @@
 # to specify by actor id:
 #        <Social links actors: actor_id[,actor_id[,...]]>
 # and to specify by variable id (in which actor ids are stored):
-#        <Social links actors: actor_id[,actor_id[,...]]>
+#        <Social links vars: variable_id,[, variable_id[,...]]>
 # As far as naming those social links and their description goes, you can
 # use the tag bellow to specify the name of the social link:
 #        <Social target: name>
@@ -85,6 +85,12 @@
 #        $game_party.add_persona_by_id(actor_id)
 # of by using the following one (by name):
 #        $game_party.add_persona_by_name("actor_name")
+# If you want to equip the persona when it's added to the party, then you can add 
+# a true flag after the actor's id or name:
+#       $game_party.add_persona_by_id(actor_id, true)
+# or
+#       $game_party.add_persona_by_name("actor_name", true)
+#
 # It is important to remember that you cannot have duplicate personas in
 # your party! Also, for developing purposes a message box will be displayed 
 # if you try adding an actor as a persona that is not actually a persona! 
@@ -187,7 +193,76 @@
 #        $game_system.fuse_personas(2).
 # For the special fusion scene you use the following script call:
 #        $game_system.fuse_personas(3).
-# ------------------------------------------------------------------------------
+#
+# You can now use `.csv` files to
+#   Setup a table with all the fusions and results, along with any conditions that 
+# need to be met for them to be available.
+#   Setup a table specifying results for normal and special fusions, exactly how it's
+# setup in the original personas.
+# For more info, check github, the demo and the options file.
+#
+# ------------------------------------------------------------------
+# CSV Fusion Configuration Guide
+# Define custom fusion results and conditions using a CSV file with 
+# the following columns:
+# - Column Structure
+#   * parent_a/b/c: Persona names (leave parent_c empty for 2-persona fusion)
+#   * result: Resulting persona name
+#   * arcana_a/b/c_rank: Minimum required arcana rank (0 = no requirement)
+#   * user_level: Minimum user level (0 = no requirement)
+#   * item_id: Required item ID in inventory (0 = no requirement)
+#   * user_condition_lambda: Custom formula using user stats (empty = no condition)
+#
+# Examples
+#
+# - Special 3-persona fusion with the main actor having at least 10 AGI required to be available
+# | Parent A | Parent B | Parent C | Result  | Arcana A Rank | Arcana B Rank | Arcana C Rank | User Level | Item ID | User Condition       |
+# |----------|----------|----------|---------|---------------|---------------|---------------|------------|---------|----------------------|
+# | Izanagi  | Angel    | Himiko   | Ishtar  | 0             | 0             | 0             | 0          | 0       | user.agi > 10        |
+#
+# - Normal fusion requiring item ID 5 in inventory
+# | Parent A       | Parent B | Parent C | Result    | Arcana A Rank | Arcana B Rank | Arcana C Rank | User Level | Item ID | User Condition |
+# |----------------|----------|----------|-----------|---------------|---------------|---------------|------------|---------|----------------|
+# | Take-Mikazuchi | Ghoul    | Sandman  | Pabilsag  | 0             | 0             | 0             | 0          | 5       |                |
+#
+# - Simple 2-persona fusion with no conditions
+# | Parent A | Parent B | Parent C | Result       | Arcana A Rank | Arcana B Rank | Arcana C Rank | User Level | Item ID | User Condition |
+# |----------|----------|----------|--------------|---------------|---------------|---------------|------------|---------|----------------|
+# | Ishtar   | Pabilsag |          | Melchizedek  | 0             | 0             | 0             | 0          | 0       |                |
+#
+# - Formula Syntax
+#  * Use user.stat_name in conditions (e.g., user.agi > 10, user.level >= 25).
+#   Leave empty for no custom condition.
+#
+# Dynamic fusion configuration
+# In essence, a high-level overview is:
+#   1. Find resulting arcana: <arcana>. Take a look at the demo's Data/Persona/dynamic_fusion.csv file
+#     for a table. Two different arcanas result in a different arcana
+#     a. In the case of special fusions, the result of the above is then conbined with the third persona
+#   2. Average the personas' *initial* levels as set in the database: <level>
+#   3. Find the persona with of <arcana> that is closest to <level> (round up if no exact level found).
+#
+# Examples
+#
+# When fusing Take-Mikazuchi and Ghoul, we determine the result as follows:
+#   1. Take-Mikazuchi is from the Emperror arcana, and Ghoul is from the Death arcana
+#     - By referring to the arcana table in Data/Persona/dynamic_fusion.csv, fusing
+#     Emperror with Ghoul will result into a Moon arcana.
+#   2. The average level of Take-Mikazuchi (level 1) and Ghoul (level 1) is 1.
+#   3. The closest persona to level 1 in the Moon arcana is Andras (level 1).
+#
+# When fusing Andras, Forneus and Angel, we determine the result as follows:
+#   1. Andras is from the Moon arcana, Forneus is from the Hermit arcana and 
+#   Angel is from the Justice arcana.
+#     - By referring to the arcana table Data/Persona/dynamic_fusion.csv, fusing
+#     Moon with Moon and Angel will result into an Empress arcana.
+#     - Next, we refer to the arcana table Data/Persona/special_fusion_arcanas_mapping.csv, fusing
+#     the Empress and Justice arcana will result into a Death arcana
+#   2. The average level of Andras (level 1), Forneus (level 3) and Angel (level 4)
+#   is 2.67 (rounded up to 3).
+#   The closest persona to level 3 in the Justice arcana is Melchizedek (level 10)
+
+# ----------------------------------------------------------------------  
 # Persona and user parameters
 # ==============================================================================
 # Personas can be equiped through the main menu command called
@@ -196,9 +271,11 @@
 # is set to 100%, but can be changed through the persona options
 # module. You can also change the percentage of the user's parameters
 # that are added to the end result. The default percentage is also
-# set to 100% and can be changed though the options module too.
+# set to 100% and can be changed through the options module too.
 # ==============================================================================
-# Mady by vFoggy
+# Made by vFoggy
+# https://github.com/GCidd/RPGMakerVXAce_Scripts/blob/master/Persona_System/README.md
+# https://forums.rpgmakerweb.com/index.php?threads/persona-system.110908
 # ==============================================================================
 #-------------------------------------------------------------------------------
 #  ____                                   __  __           _       _      
@@ -216,80 +293,90 @@
 # Persona Module Options
 #-------------------------------------------------------------------------------
 module Persona
-    PERSONA_EXP_GAIN_MULTIPLIER = 1.0
-    
-                # phys, absorb, fire, ice, lightning, water, earth, wind, light, dark
-    PERSONA_ELE_ICON_INDEXES = [115, 112, 96, 97, 98, 99, 100, 101, 102, 103]
-    # icon index that indicates that indicates the persona's strong element
-    # -1 will just show "Str"
-    PERSONA_STRONG_ELE_ICON = -1  
-    # icon index that indicates that indicates the persona's weak element
-    # -1 will just show "Wk"
-    PERSONA_WEAK_ELE_ICON = -1
-    # icon index that indicates that indicates the persona's normal element
-    # -1 will just show "-"
-    PERSONA_NORMAL_ELE_ICON = -1
-    
-    # rates multipliers. if all are the same only one number can be used for all
-    USER_ELEMENT_RATE_MULTIPLIER = 1.0
-    USER_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    USER_STATE_RATE_MULTIPLIER = 1.0
-    PERSONA_ELEMENT_RATE_MULTIPLIER = 1.0
-    PERSONA_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    PERSONA_STATE_RATE_MULTIPLIER = 1.0
-    
-    # parameter multipliers. if all are the same only one number can be used for all
-    USER_PARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    USER_XPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    USER_SPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    PERSONA_PARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    PERSONA_XPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    PERSONA_SPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    
-    # Name of the persona option in the menu and battle command
-    PERSONA_MENU_NAME = "Persona" # alternative name for persona.
-    
-    # index of persona command in battle commands window
-    PERSONA_BATTLE_COMMAND_INDEX = 2 
-    # index of persona command in main menu
-    PERSONA_MENU_COMMAND_INDEX = 1
-    
-    # name of the button images displayed in the persona list menu window
-    SELECT_PERSONA_BUTTON_IMG_NAME = "select_persona_button"
-    EQUIP_PERSONA_BUTTON_IMG_NAME = "equip_persona_button"
-    RELEASE_PERSONA_BUTTON_IMG_NAME = "release_persona_button"
-    
-    # better keep a space at the beginning of the text
-    SELECT_PERSONA_TEXT = " Show status"
-    EQUIP_PERSONA_TEXT = " Equip persona"
-    RELEASE_PERSONA_TEXT = " Release persona"
-    # written on actor's personas list when no personas are available
-    NO_PERSONAS_MSG = "No personas available."
-    
-    # key used to equip persona
-    EQUIP_PERSONA_KEY = :X
-    RELEASE_PERSONA_KEY = :Z
-    
-    # ids of the default users for a persona that has no users specified
-    # can be an empty list
-    DEFAULT_PERSONA_USERS = [1]
-    
-    # if true user can remove personas from actors that can use only one persona
-    CAN_RELEASE_ONLY_PERSONAS = true
-    PERSONA_RELEASE_SOUND = ["Audio/SE/Evasion1", 100, 100]
-    
-    # if true then skills of both user and persona will appear under user's skill
-    # list
-    UNIFIED_SKILLS = true
-    # when UNIFIED_SKILLS is false, this color is used to differentiate persona's
-    # skills from user's skills in the battle's skills list.
-    # use Color.new(0, 0, 0) for normal color
-    PERSONA_SKILLS_COLOR = Color.new(0, 255, 0) # green
-    # index from which the persona's skill commands start (for multiple skill types)
-    PERSONA_SKILLS_COMMAND_INDEX = 4
-    # hides the persona command from actor ids
-    HIDE_PERSONA_COMMAND = []
+  # Relative directory where all the graphics are stored
+  GRAPHICS_DIRECTORY = "Graphics/Persona/"
+
+  PERSONA_EXP_GAIN_MULTIPLIER = 1.0
   
+  # Element ids
+  # phys, absorb, fire, ice, lightning, water, earth, wind, light, dark
+  PERSONA_ELE_ICON_INDEXES = [115, 112, 96, 97, 98, 99, 100, 101, 102, 103]
+  # icon index that indicates the persona's strong element
+  # -1 will just show "Str"
+  PERSONA_STRONG_ELE_ICON = -1  
+  # icon index that indicates the persona's weak element
+  # -1 will just show "Wk"
+  PERSONA_WEAK_ELE_ICON = -1
+  # icon index that indicates the persona's normal element
+  # -1 will just show "-"
+  PERSONA_NORMAL_ELE_ICON = -1
+  
+  # rates multipliers. if all are the same only one number can be used for all
+  USER_ELEMENT_RATE_MULTIPLIER = 1.0
+  USER_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  USER_STATE_RATE_MULTIPLIER = 1.0
+  PERSONA_ELEMENT_RATE_MULTIPLIER = 1.0
+  PERSONA_DEBUFF_RATE_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  PERSONA_STATE_RATE_MULTIPLIER = 1.0
+  
+  # parameter multipliers. if all are the same only one number can be used for all
+  USER_PARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  USER_XPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  USER_SPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  PERSONA_PARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  PERSONA_XPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+  PERSONA_SPARAM_MULTIPLIER = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+  # Name of the persona option in the menu and battle command
+  PERSONA_MENU_NAME = "Persona" # alternative name for persona.
+  
+  # index of persona command in battle commands window
+  PERSONA_BATTLE_COMMAND_INDEX = 2 
+  # index of persona command in main menu
+  PERSONA_MENU_COMMAND_INDEX = 1
+  
+  # name of the button images displayed in the persona list menu window
+  SELECT_PERSONA_BUTTON_IMG_NAME = "select_persona_button"
+  EQUIP_PERSONA_BUTTON_IMG_NAME = "equip_persona_button"
+  RELEASE_PERSONA_BUTTON_IMG_NAME = "release_persona_button"
+  
+  # better keep a space at the beginning of the text
+  SELECT_PERSONA_TEXT = " Show status"
+  EQUIP_PERSONA_TEXT = " Equip persona"
+  RELEASE_PERSONA_TEXT = " Release persona"
+  # written on actor's personas list when no personas are available
+  NO_PERSONAS_MSG = "No personas available."
+  
+  # key used to equip persona
+  EQUIP_PERSONA_KEY = :X
+  RELEASE_PERSONA_KEY = :Z
+  
+  # ids of the default users for a persona that has no users specified
+  # can be an empty list
+  DEFAULT_PERSONA_USERS = [1]
+  
+  # if true user can remove personas from actors that can use only one persona
+  CAN_FUSE_EXCLUSIVE_PERSONAS = true
+  CAN_RELEASE_EXCLUSIVE_PERSONAS = true
+
+  # Sound settings
+  # Format: ["sound file path", level, something else]
+  PERSONA_EQUIP_SOUND = ["Audio/SE/Equip1", 100, 100]
+  PERSONA_INVALID_EQUIP_SOUND = ["Audio/SE/Buzzer1", 100, 100]
+  PERSONA_RELEASE_SOUND = ["Audio/SE/Evasion1", 100, 100]
+  
+  # if true then skills of both user and persona will appear under user's skill
+  # list
+  UNIFIED_SKILLS = true
+  # when UNIFIED_SKILLS is false, this color is used to differentiate persona's
+  # skills from user's skills in the battle's skills list.
+  # use Color.new(0, 0, 0) for normal color
+  PERSONA_SKILLS_COLOR = Color.new(0, 255, 0) # green
+  # index from which the persona's skill commands start (for multiple skill types)
+  PERSONA_SKILLS_COMMAND_INDEX = 4
+  # hides the persona command from actor ids
+  HIDE_PERSONA_COMMAND = []
+
   #-------------------------------------------------------------------------------
   #  ____  _    _ _ _   _____                    _   
   # / ___|| | _(_) | | |  ___|__  _ __ __ _  ___| |_ 
@@ -305,9 +392,9 @@ module Persona
   #                                         |_|                          
   # Skill Forget Module Options
   #-------------------------------------------------------------------------------
-    # max number of skills a persona can have
-    DEFAULT_MAX_PERSONA_SKILLS = 4
-  
+  # max number of skills a persona can have
+  DEFAULT_MAX_PERSONA_SKILLS = 4
+
   #-------------------------------------------------------------------------------
   #     _                                __  __           _       _      
   #    / \   _ __ ___ __ _ _ __   __ _  |  \/  | ___   __| |_   _| | ___ 
@@ -323,23 +410,23 @@ module Persona
   #       |_|                          
   # Arcana Module Options
   #-------------------------------------------------------------------------------
-    # min arcana rank. arcanas start with 0 rank and will be shown only 
-    # when at MIN_RANK or higher
-    MIN_RANK = 1
-    DEFAULT_MAX_RANK = 10 # default maximum rank of persona arcana
-    
-    # folder of the arcana cards images
-    ARCANA_IMG_FOLDER = "Persona/Arcanas/" # inside Graphics folder
-    
-    # name of the social links in the menu
-    ARCANA_MENU_NAME = "Social Links" # alternative name for Social Links
-    ARCANA_MENU_COMMAND_INDEX = 2 # set to nil to hide
-    
-    # file names for the arcana rank progression bar
-    ARCANA_RANKS_BAR_IMG_NAME = "bar"
-    ARCANA_PROGRESS_IMG_NAME = "progress"
-    ARCANA_PROGRESS_EMPTY_IMG_NAME = "progress_empty"
+  # min arcana rank. arcanas start with 0 rank and will be shown only 
+  # when at MIN_RANK or higher
+  MIN_ARCANA_RANK = 1
+  DEFAULT_MAX_RANK = 10 # default maximum rank of persona arcana
   
+  # folder of the arcana cards images
+  ARCANA_IMG_FOLDER = "Persona/Arcanas/" # inside Graphics folder
+  
+  # name of the social links in the menu
+  ARCANA_MENU_NAME = "Social Links" # alternative name for Social Links
+  ARCANA_MENU_COMMAND_INDEX = 2 # set to nil to hide
+  
+  # file names for the arcana rank progression bar
+  ARCANA_RANKS_BAR_IMG_NAME = "bar"
+  ARCANA_PROGRESS_IMG_NAME = "progress"
+  ARCANA_PROGRESS_EMPTY_IMG_NAME = "progress_empty"
+
   #-------------------------------------------------------------------------------
   #  _____            _       _   _               __  __           _       _      
   # | ____|_   _____ | |_   _| |_(_) ___  _ __   |  \/  | ___   __| |_   _| | ___ 
@@ -355,14 +442,21 @@ module Persona
   #       |_|                          
   # Evolution Module Options
   #-------------------------------------------------------------------------------
-      # ID of common event that runs when a persona is being evolved
-      COMMON_EVENT_ID = 1
-      
-      # variable id in which the name of the persona that is being evolved is stored
-      EVOLVING_PERSONA_VAR_ID = 13
-      # variable id in which the name of the persona to which the persona will be evolved
-      RESULTING_PERSONA_VAR_ID = 14
+  # ID of common event that runs when a persona is being evolved
+  DEFAULT_COMMON_EVENT_ID = 1
+  COMMON_EVENT_ID = {
+    # Mapping from actor id => common event id
+    5 => 1
+  }
+  COMMON_EVENT_ID.default(DEFAULT_COMMON_EVENT_ID)
   
+  # The variables below are used so that you can refer to the persona by name
+  # through the text messages
+  # variable id in which the name of the persona that is being evolved is stored
+  EVOLVING_PERSONA_VAR_ID = 13
+  # variable id in which the name of the persona to which the persona will be evolved
+  RESULTING_PERSONA_VAR_ID = 14
+
   #-------------------------------------------------------------------------------
   #  _____          _               __  __           _       _      
   # |  ___|   _ ___(_) ___  _ __   |  \/  | ___   __| |_   _| | ___ 
@@ -378,156 +472,248 @@ module Persona
   #       |_|                          
   # Fusion Module Options
   #-------------------------------------------------------------------------------
-    # list of actor ids whose personas can be fused.
-    # example: if [1, 4, 6] then the player can fuse personas that belong to 
-    # the actors with id 1, 4 and 6
-    CAN_USE_ACTORS_PERSONAS = [1]
-    
-    # color of the special fusion result in the fusion results window. RGB values
-    SPECIAL_FUSION_COLOR = Color.new(255, 255, 0) # yellow
-  
-    # method to calculate the fusion resulting persona extra exp
-    def self.FUSION_EXP_CALC(persona)
-      # you can use this method to calculate the total experience the persona 
-      # child will earn from the fusion process. keep the first line
-      return 0 unless persona.persona? || persona.nil?
-      [persona.arcana_rank, 0].max * 1000 + persona.level * 1000 + rand(5) * 100 + rand(10) * 10 + rand(10)
-    end
-    
-    # if true, then the player has to choose the fusing personas in the order
-    # in which they are specified in the tag.
-    ORDER_MATTERS = true
-  
-  #-------------------------------------------------------------------------------
-  #  ____  _            __  __ _        __  __           _       _      
-  # / ___|| |__  _   _ / _|/ _| | ___  |  \/  | ___   __| |_   _| | ___ 
-  # \___ \| '_ \| | | | |_| |_| |/ _ \ | |\/| |/ _ \ / _` | | | | |/ _ \
-  #  ___) | | | | |_| |  _|  _| |  __/ | |  | | (_) | (_| | |_| | |  __/
-  # |____/|_| |_|\__,_|_| |_| |_|\___| |_|  |_|\___/ \__,_|\__,_|_|\___|
-  #                                                                     
-  #   ___        _   _                 
-  #  / _ \ _ __ | |_(_) ___  _ __  ___ 
-  # | | | | '_ \| __| |/ _ \| '_ \/ __|
-  # | |_| | |_) | |_| | (_) | | | \__ \
-  #  \___/| .__/ \__|_|\___/|_| |_|___/
-  #       |_|                          
-  # Shuffle Module Options
-  #-------------------------------------------------------------------------------
-    # possible window positions
-    WINDOW_POSITIONS = [
-        "BL",   # Bottom Left
-        "BR",   # Bottom Right
-        "TL",   # Top Left
-        "TR"    # Top Right
+  # Relative directory where the fusions file is located
+  FUSIONS_CSV_FILEPATH = "Data/Persona/fusions.csv"
+  ARCANAS_MAPPING_FILEPATH = "Data/Persona/arcanas_mapping.csv"
+  SPECIAL_FUSIONS_ARCANAS_MAPPING_FILEPATH = "Data/Persona/special_fusion_arcanas_mapping.csv"
+  # With dynamic fusions, the children are calculated sort of dynamically, similar to
+  # how it has been done in the original persona games
+  # For more info, refer to this:
+  # https://www.thegamer.com/persona-5-royal-p5r-fusion-chart-cheapest-recipes-compendium
+  # In essence, a high-level overview is:
+  #   1. Find resulting arcana: <arcana>. Take a look at the demo's Data/Persona/dynamic_fusion.csv file
+  #     for a table. Two different arcanas result in a different arcana
+  #     a. In the case of special fusions, the result of the above is then conbined with the third persona
+  #   2. Average the personas' *initial* levels as set in the database: <level>
+  #   3. Find the persona with of <arcana> that is closest to <level> (round up if no exact leevel found).
+  # Disabled by default for simplicity
+  # If it's enabled, fusions defined in the database with tags or those from the .csv data files
+  # will take priority.
+  #   1. Check for explicitly defined fusions
+  #   2. If one was found, it is used
+  #   3. Otherwise, dynamically find result
+  # Conditions, like arcana rank etc., cannot be used for dynamic fusions
+  DYNAMIC_FUSION_RESULTS = true
+  def self.LEVEL_CALC_FUNC(persona_a, persona_b, persona_c=nil)
+    initial_levels = [
+      persona_a.actor.initial_level,
+      persona_b.actor.initial_level,
     ]
-    
-    # folder of images of cards
-    CARD_IMG_FOLDER = "Persona/Cards/" # inside Graphics folder
-    # name of the image of the back of the cards
-    CARD_BACK_NAME = "Back" # should be inside CARD_IMG_FOLDER
-    # background file of shuffle time
-    SHUFFLE_BACKGROUND = "Shuffle_Background" # should be inside Persona folder
-    
-    # index of window position (WINDOW_POSITIONS) for shuffle time accept window
-    ACCEPT_POSITION = 1
-    # index of window position (WINDOW_POSITIONS) that displays the tries left
-    # for the matching method
-    COUNTER_POSITION = 1
-    
-    MATCHING_TRIES = 5
-    
-    # max numbers of cards displayed per row in shuffle time (before shuffling
-    # and during the matching) must be set according to the image size of the
-    # cards if there are too many per row they will go out of screen
-    MAX_CARDS_PER_ROW = 5
-    
-    # minimum number of penalty and blank cards a shuffle time must have
-    MIN_PENALTY_CARDS = 1
-    MIN_BLANK_CARDS = 1
-    # maximum number of penalty and blank cards a shuffle time must have
-    MAX_PENALTY_CARDS = 2
-    MAX_BLANK_CARDS = 2
-    # number of cards required to be dropped (without blank and penalty) 
-    # to initiate shuffle time
-    MIN_CARDS_TO_SHUFFLE = 2
-    
-    # variable id from which the next shuffle method is set
-    FORCE_SHUFFLE_METHOD_VAR_ID = 10
-    
-    # variable id from which the next shuffle cards are set
-    SHUFFLE_ITEMS_VAR_ID = 11
-    # if true then duplicates cards will be included in the shuffle time
-    # does not apply to blank and penalty cards. use the 
-    # MIN/MAX_PENALTY/BLANK_CARDS options
-    ALLOW_DUPLICATES = false
-    # if true then the cards set with the variable will be filtered according
-    # to MIN/MAX_PENALTY_CARDS etc.
-    FILTER_MANUAL_CARDS = false
-    
-    # Messages
-    # message displayed when player loses at the matching shuffle method
-    MATCHING_LOSE_MESSAGE = "You lost!"
-    
-    # message displayed when no card was drawn (only happens in matching method)
-    NO_CARD_DRAW_MSG = "You didn't draw any card!"
-    # message dispalyed in the battle results when no card is drawn
-    NO_CARD_RESULT_MSG = "Nothing happened."
-    
-    # message displayed when the blank card is drawn
-    BLANK_CARD_DRAW_MSG = "You drew a Blank Card..."
-    # message dispalyed in the battle results when the blank card is drawn
-    BLANK_CARD_RESULT_MSG = "Nothing happened."
-    
-    # message displayed when the penalty card is drawn
-    PENALTY_CARD_DRAW_MSG = "You drew a Penalty Card..."
-    # message displayed in the battle results when the penalty card is drawn
-    PENALTY_CARD_RESULT_MSG = "All the rewards you gained from this battle \nhave vanished..."
-    
-    # message displayed when the party already has the drawn persona
-    DUPLICATE_PERSONA_DRAW_MSG = "You drew a card of the Persona %s!\nBut you already have this Persona..."
-    # message displayed in the battle results when the party already has the drawn persona
-    DUPLICATE_PERSONA_RESULT_MSG = ""
-    
-    # message that is displayed when a card is picked. must have the %s which 
-    # is where the persona's name will be put
-    PERSONA_CARD_DRAW_MSG = "You drew a card of the Persona %s!"
-    
-    # [Audio file directory, Volume level, Pitch]
-    # music to play while shuffling
-    SHUFFLE_BGM = ["Audio/BGM/Field2", 100, 100]
-    # could be the sound of cards
-    SHUFFLE_BGS = nil
-    SHUFFLE_PENALTY_SOUND = ["Audio/SE/Collapse1", 100, 100]
-    SHUFFLE_BLANK_SOUND = ["Audio/SE/Blind", 100, 100] # same sound plays for no card too
-    SHUFFLE_CARD_SOUND = ["Audio/SE/Applause2", 100, 100]
-    SHUFFLE_DUPLICATE_SOUND = ["Audio/SE/Blind", 100, 100]  # persona already in party sound
-    
-    # you can change the method below and make it decide the shuffle method
-    # however you want
-    def self.SHUFFLE_SELECTION(cards)
-      if cards.size <= 6
-        return ["Horizontal", "Diagonal"].sample
-      elsif cards.size <= 10
-        return "Combination"
-      elsif cards.size <= 15
-        return "Matching"
-      end
+    initial_levels.push(persona_c.actor.initial_level) if !persona_c.nil?
+    return (initial_levels.inject(0, :+) / initial_levels.length).ceil
+  end
+
+  # By default, when checking for user conditions, check actor with the following id
+  # This does not apply for exclusive personas and their users. In such cases,
+  # we check the corresponding user for conditions
+  FUSION_CONDITIONS_DEFAULT_ACTOR_ID_CHECK = 1
+
+  # When a fusion requires an item, should it be removed from the inventory?
+  REMOVE_CONDITION_ITEM_ON_FUSE = true
+  
+  # list of actor ids whose personas can be fused.
+  # example: if [1, 4, 6] then the player can fuse personas that belong to 
+  # the actors with id 1, 4 and 6
+  CAN_FUSE_ACTORS_PERSONAS = [1]
+  
+  # color of the special fusion result in the fusion results window. RGB values
+  # SPECIAL_FUSION_COLOR = Color.new(0, 0, 0, 0) # Default, no color
+  SPECIAL_FUSION_COLOR = Color.new(255, 255, 0) # yellow
+
+  # method to calculate the fusion resulting persona extra exp
+  def self.FUSION_EXP_CALC(persona)
+    # you can use this method to calculate the total experience the persona 
+    # child will earn from the fusion process. keep the first line
+    return 0 unless persona.is_persona? || persona.nil?
+    [persona.arcana_rank, 0].max * 1000 + persona.level * 1000 + rand(5) * 100 + rand(10) * 10 + rand(10)
+  end
+  
+  # Which personas does the order matter when fusing?
+  ORDER_MATTERS_FOR = []
+
+#-------------------------------------------------------------------------------
+#  ____  _            __  __ _        __  __           _       _      
+# / ___|| |__  _   _ / _|/ _| | ___  |  \/  | ___   __| |_   _| | ___ 
+# \___ \| '_ \| | | | |_| |_| |/ _ \ | |\/| |/ _ \ / _` | | | | |/ _ \
+#  ___) | | | | |_| |  _|  _| |  __/ | |  | | (_) | (_| | |_| | |  __/
+# |____/|_| |_|\__,_|_| |_| |_|\___| |_|  |_|\___/ \__,_|\__,_|_|\___|
+#                                                                     
+#   ___        _   _                 
+#  / _ \ _ __ | |_(_) ___  _ __  ___ 
+# | | | | '_ \| __| |/ _ \| '_ \/ __|
+# | |_| | |_) | |_| | (_) | | | \__ \
+#  \___/| .__/ \__|_|\___/|_| |_|___/
+#       |_|                          
+# Shuffle Module Options
+#-------------------------------------------------------------------------------
+  # possible window positions
+  WINDOW_POSITIONS = [
+      "BL",   # Bottom Left
+      "BR",   # Bottom Right
+      "TL",   # Top Left
+      "TR"    # Top Right
+  ]
+  
+  # folder of images of cards
+  CARD_IMG_FOLDER = "Persona/Cards/" # inside Graphics folder
+  # name of the image of the back of the cards
+  CARD_BACK_NAME = "Back" # should be inside CARD_IMG_FOLDER
+  # background file of shuffle time
+  SHUFFLE_BACKGROUND = "Shuffle_Background" # should be inside Persona folder
+  
+  # index of window position (WINDOW_POSITIONS) for shuffle time accept window
+  ACCEPT_POSITION = 1
+  # index of window position (WINDOW_POSITIONS) that displays the tries left
+  # for the matching method
+  COUNTER_POSITION = 1
+  
+  MATCHING_TRIES = 5
+  
+  # max numbers of cards displayed per row in shuffle time (before shuffling
+  # and during the matching) must be set according to the image size of the
+  # cards if there are too many per row they will go out of screen
+  MAX_CARDS_PER_ROW = 5
+  
+  # minimum number of penalty and blank cards a shuffle time must have
+  MIN_PENALTY_CARDS = 1
+  MIN_BLANK_CARDS = 1
+  # maximum number of penalty and blank cards a shuffle time must have
+  MAX_PENALTY_CARDS = 2
+  MAX_BLANK_CARDS = 2
+  # number of cards required to be dropped (without blank and penalty) 
+  # to initiate shuffle time
+  MIN_CARDS_TO_SHUFFLE = 2
+  
+  # variable id from which the next shuffle method is set
+  FORCE_SHUFFLE_METHOD_VAR_ID = 10
+  
+  # variable id from which the next shuffle cards are set
+  SHUFFLE_ITEMS_VAR_ID = 11
+  # if true then duplicates cards will be included in the shuffle time
+  # does not apply to blank and penalty cards. use the 
+  # MIN/MAX_PENALTY/BLANK_CARDS options
+  ALLOW_DUPLICATES = false
+  # if true then the cards set with the variable will be filtered according
+  # to MIN/MAX_PENALTY_CARDS etc.
+  FILTER_MANUAL_CARDS = false
+  
+  # Messages
+  # message displayed when player loses at the matching shuffle method
+  MATCHING_LOSE_MESSAGE = "You lost!"
+  
+  # message displayed when no card was drawn (only happens in matching method)
+  NO_CARD_DRAW_MSG = "You didn't draw any card!"
+  # message dispalyed in the battle results when no card is drawn
+  NO_CARD_RESULT_MSG = "Nothing happened."
+  
+  # message displayed when the blank card is drawn
+  BLANK_CARD_DRAW_MSG = "You drew a Blank Card..."
+  # message dispalyed in the battle results when the blank card is drawn
+  BLANK_CARD_RESULT_MSG = "Nothing happened."
+  
+  # message displayed when the penalty card is drawn
+  PENALTY_CARD_DRAW_MSG = "You drew a Penalty Card..."
+  # message displayed in the battle results when the penalty card is drawn
+  PENALTY_CARD_RESULT_MSG = "All the rewards you gained from this battle \nhave vanished..."
+  
+  # message displayed when the party already has the drawn persona
+  DUPLICATE_PERSONA_DRAW_MSG = "You drew a card of the Persona %s!\nBut you already have this Persona..."
+  # message displayed in the battle results when the party already has the drawn persona
+  DUPLICATE_PERSONA_RESULT_MSG = ""
+  
+  # message that is displayed when a card is picked. must have the %s which 
+  # is where the persona's name will be put
+  PERSONA_CARD_DRAW_MSG = "You drew a card of the Persona %s!"
+  
+  # Transition form current scene to the shuffle scene in frames
+  SHUFFLE_TRANSITION_DURATION = 15
+  # [Audio file directory, Volume level, Pitch]
+  # music to play while shuffling
+  SHUFFLE_BGM = ["Audio/BGM/Field2", 100, 100]
+  # could be the sound of cards
+  SHUFFLE_BGS = nil
+  SHUFFLE_PENALTY_SOUND = ["Audio/SE/Collapse1", 100, 100]
+  SHUFFLE_BLANK_SOUND = ["Audio/SE/Blind", 100, 100] # same sound plays for no card too
+  SHUFFLE_CARD_SOUND = ["Audio/SE/Applause2", 100, 100]
+  SHUFFLE_DUPLICATE_SOUND = ["Audio/SE/Blind", 100, 100]  # persona already in party sound
+  
+  # you can change the method below and make it decide the shuffle method
+  # however you want
+  def self.SHUFFLE_SELECTION(cards)
+    if cards.size <= 6
+      return ["Horizontal", "Diagonal"].sample
+    elsif cards.size <= 10
+      return "Combination"
+    elsif cards.size <= 15
+      return "Matching"
     end
   end
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------
-  #  _____           _          __               _   _                 
-  # | ____|_ __   __| |   ___  / _|   ___  _ __ | |_(_) ___  _ __  ___ 
-  # |  _| | '_ \ / _` |  / _ \| |_   / _ \| '_ \| __| |/ _ \| '_ \/ __|
-  # | |___| | | | (_| | | (_) |  _| | (_) | |_) | |_| | (_) | | | \__ \
-  # |_____|_| |_|\__,_|  \___/|_|    \___/| .__/ \__|_|\___/|_| |_|___/
-  #                                       |_|                          
-  #                   _   
-  #  _ __   __ _ _ __| |_ 
-  # | '_ \ / _` | '__| __|
-  # | |_) | (_| | |  | |_ 
-  # | .__/ \__,_|_|   \__|
-  # |_|                   
-  # 
-  #-------------------------------------------------------------------------------
-  #-------------------------------------------------------------------------------  
+end
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+#  _____           _          __               _   _                 
+# | ____|_ __   __| |   ___  / _|   ___  _ __ | |_(_) ___  _ __  ___ 
+# |  _| | '_ \ / _` |  / _ \| |_   / _ \| '_ \| __| |/ _ \| '_ \/ __|
+# | |___| | | | (_| | | (_) |  _| | (_) | |_) | |_| | (_) | | | \__ \
+# |_____|_| |_|\__,_|  \___/|_|    \___/| .__/ \__|_|\___/|_| |_|___/
+#                                       |_|                          
+#                   _   
+#  _ __   __ _ _ __| |_ 
+# | '_ \ / _` | '__| __|
+# | |_) | (_| | |  | |_ 
+# | .__/ \__,_|_|   \__|
+# |_|                   
+# 
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+module Persona
+  def Persona::get_user_element_rate_multiplier(element_id)
+    return USER_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? USER_ELEMENT_RATE_MULTIPLIER[element_id] : USER_ELEMENT_RATE_MULTIPLIER
+  end
+
+  def Persona::get_user_debuff_rate_multiplier(debuff_id)
+    return USER_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? USER_DEBUFF_RATE_MULTIPLIER[debuff_id] : USER_DEBUFF_RATE_MULTIPLIER
+  end
+
+  def Persona::get_user_state_rate_multiplier(state_id)
+    return USER_STATE_RATE_MULTIPLIER.is_a?(Array) ? USER_STATE_RATE_MULTIPLIER[state_id] : USER_STATE_RATE_MULTIPLIER
+  end
+
+  def Persona::get_persona_element_rate_multiplier(element_id)
+    return PERSONA_ELEMENT_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_ELEMENT_RATE_MULTIPLIER[element_id] : PERSONA_ELEMENT_RATE_MULTIPLIER
+  end
+
+  def Persona::get_persona_debuff_rate_multiplier(debuff_id)
+    return PERSONA_DEBUFF_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_DEBUFF_RATE_MULTIPLIER[debuff_id] : PERSONA_DEBUFF_RATE_MULTIPLIER
+  end
+
+  def Persona::get_persona_state_rate_multiplier(state_id)
+    return PERSONA_STATE_RATE_MULTIPLIER.is_a?(Array) ? PERSONA_STATE_RATE_MULTIPLIER[state_id] : PERSONA_STATE_RATE_MULTIPLIER
+  end
+
+  # Parameter multiplier getters
+  def Persona::get_user_param_multiplier(param_id)
+    return USER_PARAM_MULTIPLIER.is_a?(Array) ? USER_PARAM_MULTIPLIER[param_id] : USER_PARAM_MULTIPLIER
+  end
+
+  def Persona::get_user_xparam_multiplier(xparam_id)
+    return USER_XPARAM_MULTIPLIER.is_a?(Array) ? USER_XPARAM_MULTIPLIER[xparam_id] : USER_XPARAM_MULTIPLIER
+  end
+
+  def Persona::get_user_sparam_multiplier(sparam_id)
+    return USER_SPARAM_MULTIPLIER.is_a?(Array) ? USER_SPARAM_MULTIPLIER[sparam_id] : USER_SPARAM_MULTIPLIER
+  end
+
+  def Persona::get_persona_param_multiplier(param_id)
+    return PERSONA_PARAM_MULTIPLIER.is_a?(Array) ? PERSONA_PARAM_MULTIPLIER[param_id] : PERSONA_PARAM_MULTIPLIER
+  end
+
+  def Persona::get_persona_xparam_multiplier(xparam_id)
+    return PERSONA_XPARAM_MULTIPLIER.is_a?(Array) ? PERSONA_XPARAM_MULTIPLIER[xparam_id] : PERSONA_XPARAM_MULTIPLIER
+  end
+
+  def Persona::get_persona_sparam_multiplier(sparam_id)
+    return PERSONA_SPARAM_MULTIPLIER.is_a?(Array) ? PERSONA_SPARAM_MULTIPLIER[sparam_id] : PERSONA_SPARAM_MULTIPLIER
+  end
+end
