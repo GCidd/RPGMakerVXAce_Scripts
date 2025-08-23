@@ -25,7 +25,7 @@
 
 ![Fusion System Screenshot](./media/updates/fusion%20results.png)
 
-- **Dynamic fusion results** 🔄 - Implemented original Persona fusion mechanics with automatic result determination. Read more [here](./Persona_System_Options.rb#468) or [here](https://www.thegamer.com/persona-5-royal-p5r-fusion-chart-cheapest-recipes-compendium).
+- **Dynamic fusion results** 🔄 - Implemented original Persona fusion mechanics with automatic result determination. Read more [here](https://github.com/GCidd/RPGMakerVXAce_Scripts/blob/master/Persona_System/Persona_System_Options.rb#L479) or [here](https://www.thegamer.com/persona-5-royal-p5r-fusion-chart-cheapest-recipes-compendium).
 - **CSV-based fusion configuration** 📊 - Define complex fusion conditions including parent arcanas, user level or item requirements, and custom formulas (same syntax way as skill formula)
 
 ### ⚙️ More Configuration Options
