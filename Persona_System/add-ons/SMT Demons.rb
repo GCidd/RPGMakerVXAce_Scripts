@@ -69,6 +69,13 @@ class Game_Party < Game_Unit
     end
 end
 
+class Game_Personas
+    # Redirect to Game_Actors
+    def [](actor_id)
+        $game_actors[actor_id]
+    end
+end
+
 class Window_PersonaStatus < Window_Command
     # Patch to work with Scene_Status that expects an actor= method
     def actor=(actor)
@@ -138,8 +145,15 @@ end
 
 class Window_FusionParents < Window_Personas
   def available_personas
-    return $game_party.personas
+    # Return all personas in party
+    $game_party.personas
   end
+  
+  def is_persona_enabled_at?(index)
+    # skip checking for options from the original system
+    return fusion_selection_valid?(index)
+  end
+
 end
 
 class Scene_Fusion < Scene_Base
