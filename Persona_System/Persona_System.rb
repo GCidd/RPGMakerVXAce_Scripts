@@ -989,13 +989,16 @@ class Window_Personas < Window_Command
   def equip_enabled?
     handle?(:equip)
   end
-    
+  
+  def available_personas
+    $game_party.actors_personas(@actor.id)
+  end
+
   def refresh
     super
     contents.clear
-    @personas = $game_party.actors_personas(@actor.id)
+    @personas = available_personas
     draw_all_items
-    select_last
   end
   
   def draw_all_items
@@ -1716,15 +1719,18 @@ class Game_Actor < Game_Battler
   alias persona_forget_ce change_exp
   def change_exp(exp, show)
     persona_forget_ce(exp, show)
-    if @extra_skills.size > 0
-      $game_party.menu_persona = self
-      if !SceneManager.scene_is?(Scene_Battle)
+    if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle)
+      if !has_skill_slot?
         SceneManager.call(Scene_ForgetSkill)
       end
     end
     refresh
   end
   
+  def has_skill_slot?
+    return @skills.size < @max_skills
+  end
+
   def replace_skill(old_skill, new_skill)
     index = @skills.index(old_skill.id)
     @skills[index] = new_skill.id
@@ -3076,12 +3082,6 @@ class Window_FusionParents < Window_Personas
     refresh
   end
   
-  def refresh
-    contents.clear
-    refresh_children
-    draw_all_items
-  end
-  
   def refresh_children
     @fusion_results_data.clear
 
@@ -3167,6 +3167,11 @@ class Window_FusionParents < Window_Personas
   
   def call_return_handler
     call_handler(:return)
+  end
+  
+  def refresh
+    refresh_children
+    super
   end
   
   def process_ok
@@ -4490,7 +4495,6 @@ class Scene_BaseShuffle < Scene_Base
   
   def show_results
     if !@card_selected.nil?
-      puts @card_selected.card_name
       persona = $game_personas.get_by_name(@card_selected.card_name)
     else
       persona = nil
@@ -4806,7 +4810,6 @@ class Scene_ShuffleRotating < Scene_BaseShuffle
   end
   
   def start_shuffle
-    puts "start_shuffle: #{caller[0]}"
     @cards.each_with_index do |card, i|
       x1 = card.x
       y1 = card.y
