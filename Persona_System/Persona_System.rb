@@ -1314,11 +1314,15 @@ class Scene_Battle < Scene_Base
   alias persona_cacw create_actor_command_window
   def create_actor_command_window
     persona_cacw
+    add_persona_commands_to_actor_command_window
+  end
+  
+  def add_persona_commands_to_actor_command_window
     @actor_command_window.set_handler(:persona, method(:command_persona))
     @actor_command_window.set_handler(:persona_skills, method(:persona_skills))
     @actor_command_window.set_handler(:persona_magic, method(:persona_skills))
   end
-  
+
   def command_persona
     @persona_window = Window_BattlePersonas.new(BattleManager.actor)
     @persona_window.select_last
@@ -1371,6 +1375,10 @@ class Scene_Menu < Scene_MenuBase
   alias persona_ccw create_command_window
   def create_command_window
     persona_ccw
+    add_persona_commands_to_command_window
+  end
+
+  def add_persona_commands_to_command_window
     @command_window.set_handler(:persona,    method(:command_persona))
   end
   
@@ -1415,7 +1423,6 @@ class Window_CurrentActor < Window_Base
     self.y = Graphics.height - height
   end
 end
-
 
 class Scene_Personas < Scene_Base
 
@@ -2784,6 +2791,10 @@ class Scene_Menu < Scene_MenuBase
   alias persona_arcana_ccw create_command_window
   def create_command_window
     persona_arcana_ccw
+    add_social_links_command
+  end
+
+  def add_social_links_command
     @command_window.set_handler(:social_links,    method(:social_links))
   end
   
@@ -3621,7 +3632,7 @@ module BattleManager
       
       @cards_dropped = $game_system.prepare_cards(@cards_dropped)
       
-      if @cards_dropped.empty?
+      if not Persona::SHUFFLE_TIME_ENABLED or @cards_dropped.empty?
         persona_shuffle_pv
         return
       end
