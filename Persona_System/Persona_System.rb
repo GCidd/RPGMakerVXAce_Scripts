@@ -29,9 +29,9 @@ class RPG::Actor < RPG::BaseItem
     note =~ /<Player level: (\d+)>/ ? $1.to_i : 0
   end
   
-  def battletest_persona
+  def battletest_persona_id
     # get persona to use for battletest
-    note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : 0
+    note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : -1
   end
   
   def hide_status_nickname
@@ -446,9 +446,10 @@ class Game_Party < Game_Unit
     $data_system.test_battlers.each do |battler|
       # get battletest persona of each battle test actor and equip them
       actor = $game_actors[battler.actor_id]
-      btest_persona = $game_actors[battler.actor_id].battletest_persona
-      if btest_persona != 0
-        actor.change_persona(btest_persona)
+      btest_persona_id = actor.actor.battletest_persona_id
+      persona = $game_personas[btest_persona_id]
+      if btest_persona_id != -1
+        actor.change_persona(persona)
       end
     end
   end
