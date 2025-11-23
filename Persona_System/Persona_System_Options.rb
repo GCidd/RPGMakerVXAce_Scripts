@@ -85,12 +85,6 @@
 #        $game_party.add_persona_by_id(actor_id)
 # of by using the following one (by name):
 #        $game_party.add_persona_by_name("actor_name")
-# If you want to equip the persona when it's added to the party, then you can add 
-# a true flag after the actor's id or name:
-#       $game_party.add_persona_by_id(actor_id, true)
-# or
-#       $game_party.add_persona_by_name("actor_name", true)
-#
 # It is important to remember that you cannot have duplicate personas in
 # your party! Also, for developing purposes a message box will be displayed 
 # if you try adding an actor as a persona that is not actually a persona! 
@@ -193,14 +187,6 @@
 #        $game_system.fuse_personas(2).
 # For the special fusion scene you use the following script call:
 #        $game_system.fuse_personas(3).
-#
-# You can now use `.csv` files to
-#   Setup a table with all the fusions and results, along with any conditions that 
-# need to be met for them to be available.
-#   Setup a table specifying results for normal and special fusions, exactly how it's
-# setup in the original personas.
-# For more info, check github, the demo and the options file.
-#
 # ------------------------------------------------------------------
 # CSV Fusion Configuration Guide
 # Define custom fusion results and conditions using a CSV file with 
@@ -546,6 +532,8 @@ module Persona
 #       |_|                          
 # Shuffle Module Options
 #-------------------------------------------------------------------------------
+  SHUFFLE_TIME_ENABLED = true
+
   # possible window positions
   WINDOW_POSITIONS = [
       "BL",   # Bottom Left
