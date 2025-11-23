@@ -180,4 +180,3 @@ class Scene_Fusion < Scene_Base
     @choice = -1
   end
 end
-
