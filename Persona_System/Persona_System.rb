@@ -29,9 +29,9 @@ class RPG::Actor < RPG::BaseItem
     note =~ /<Player level: (\d+)>/ ? $1.to_i : 0
   end
   
-  def battletest_persona
+  def battletest_persona_id
     # get persona to use for battletest
-    note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : 0
+    note =~ /<Battletest persona: (\d+)>/ ? $1.to_i : -1
   end
   
   def hide_status_nickname
@@ -446,9 +446,10 @@ class Game_Party < Game_Unit
     $data_system.test_battlers.each do |battler|
       # get battletest persona of each battle test actor and equip them
       actor = $game_actors[battler.actor_id]
-      btest_persona = $game_actors[battler.actor_id].battletest_persona
-      if btest_persona != 0
-        actor.change_persona(btest_persona)
+      btest_persona_id = actor.actor.battletest_persona_id
+      persona = $game_personas[btest_persona_id]
+      if btest_persona_id != -1
+        actor.change_persona(persona)
       end
     end
   end
@@ -989,13 +990,16 @@ class Window_Personas < Window_Command
   def equip_enabled?
     handle?(:equip)
   end
-    
+  
+  def available_personas
+    $game_party.actors_personas(@actor.id)
+  end
+
   def refresh
     super
     contents.clear
-    @personas = $game_party.actors_personas(@actor.id)
+    @personas = available_personas
     draw_all_items
-    select_last
   end
   
   def draw_all_items
@@ -1314,11 +1318,15 @@ class Scene_Battle < Scene_Base
   alias persona_cacw create_actor_command_window
   def create_actor_command_window
     persona_cacw
+    add_persona_commands_to_actor_command_window
+  end
+  
+  def add_persona_commands_to_actor_command_window
     @actor_command_window.set_handler(:persona, method(:command_persona))
     @actor_command_window.set_handler(:persona_skills, method(:persona_skills))
     @actor_command_window.set_handler(:persona_magic, method(:persona_skills))
   end
-  
+
   def command_persona
     @persona_window = Window_BattlePersonas.new(BattleManager.actor)
     @persona_window.select_last
@@ -1371,6 +1379,10 @@ class Scene_Menu < Scene_MenuBase
   alias persona_ccw create_command_window
   def create_command_window
     persona_ccw
+    add_persona_commands_to_command_window
+  end
+
+  def add_persona_commands_to_command_window
     @command_window.set_handler(:persona,    method(:command_persona))
   end
   
@@ -1415,7 +1427,6 @@ class Window_CurrentActor < Window_Base
     self.y = Graphics.height - height
   end
 end
-
 
 class Scene_Personas < Scene_Base
 
@@ -1709,15 +1720,18 @@ class Game_Actor < Game_Battler
   alias persona_forget_ce change_exp
   def change_exp(exp, show)
     persona_forget_ce(exp, show)
-    if @extra_skills.size > 0
-      $game_party.menu_persona = self
-      if !SceneManager.scene_is?(Scene_Battle)
+    if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle)
+      if !has_skill_slot?
         SceneManager.call(Scene_ForgetSkill)
       end
     end
     refresh
   end
   
+  def has_skill_slot?
+    return @skills.size < @max_skills
+  end
+
   def replace_skill(old_skill, new_skill)
     index = @skills.index(old_skill.id)
     @skills[index] = new_skill.id
@@ -2784,6 +2798,10 @@ class Scene_Menu < Scene_MenuBase
   alias persona_arcana_ccw create_command_window
   def create_command_window
     persona_arcana_ccw
+    add_social_links_command
+  end
+
+  def add_social_links_command
     @command_window.set_handler(:social_links,    method(:social_links))
   end
   
@@ -3065,12 +3083,6 @@ class Window_FusionParents < Window_Personas
     refresh
   end
   
-  def refresh
-    contents.clear
-    refresh_children
-    draw_all_items
-  end
-  
   def refresh_children
     @fusion_results_data.clear
 
@@ -3156,6 +3168,11 @@ class Window_FusionParents < Window_Personas
   
   def call_return_handler
     call_handler(:return)
+  end
+  
+  def refresh
+    refresh_children
+    super
   end
   
   def process_ok
@@ -3621,7 +3638,7 @@ module BattleManager
       
       @cards_dropped = $game_system.prepare_cards(@cards_dropped)
       
-      if @cards_dropped.empty?
+      if not Persona::SHUFFLE_TIME_ENABLED or @cards_dropped.empty?
         persona_shuffle_pv
         return
       end
@@ -4479,7 +4496,6 @@ class Scene_BaseShuffle < Scene_Base
   
   def show_results
     if !@card_selected.nil?
-      puts @card_selected.card_name
       persona = $game_personas.get_by_name(@card_selected.card_name)
     else
       persona = nil
@@ -4795,7 +4811,6 @@ class Scene_ShuffleRotating < Scene_BaseShuffle
   end
   
   def start_shuffle
-    puts "start_shuffle: #{caller[0]}"
     @cards.each_with_index do |card, i|
       x1 = card.x
       y1 = card.y
