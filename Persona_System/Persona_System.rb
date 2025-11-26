@@ -1438,6 +1438,7 @@ class Scene_Personas < Scene_Base
     @choice = -1
     @message_window = Window_Message.new
     @current_actor_window = Window_CurrentActor.new
+    @interpreter = Game_Interpreter.new
     @current_actor_window.z = 98
     create_personas_window
     create_status_window
@@ -1511,10 +1512,7 @@ class Scene_Personas < Scene_Base
     if @personas_window.personas.size == 1
       $game_message.add("This is #{@actor.name}'s last #{Persona::PERSONA_MENU_NAME.capitalize}!")
     end
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    @interpreter.setup_choices([["Yes", "No"], 2])
     wait_for_message
     if @choice == 0
       Audio.se_play(*Persona::PERSONA_RELEASE_SOUND)
@@ -1529,7 +1527,7 @@ class Scene_Personas < Scene_Base
       @choice = -1
     end
   end
-  
+
   def on_persona_ok
     @status_window.persona = @personas_window.current_persona
     @status_window.show.activate
@@ -1958,11 +1956,8 @@ class Scene_ForgetSkill < Scene_Base
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
     
-    $game_message.add("Are you sure you don't want #{persona.name}\nto learn #{new_skill.name}?")
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    $game_message.add("Are you sure you don't want #{persona_name}\nto learn #{new_skill_name}?")
+    @interpreter.setup_choices([["Yes", "No"], 2])
     wait_for_message
     index = @status_window.index
     if @choice == 0
@@ -1976,17 +1971,14 @@ class Scene_ForgetSkill < Scene_Base
       @status_window.activate
     end
   end
-  
+
   def skill_forget
     persona = @status_window.persona
     @status_window.deactivate
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
     $game_message.add("Are you sure you want #{persona.name} to forget\n#{skill.name} and learn #{new_skill.name}?")
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    @interpreter.setup_choices([["Yes", "No"], 2])
     wait_for_message
     index = @status_window.index
     if @choice == 0
@@ -2000,7 +1992,7 @@ class Scene_ForgetSkill < Scene_Base
       @status_window.activate
     end
   end
-  
+
   def next_new_skill
     skill_id = $game_party.menu_persona.extra_skills[0]
     skill = $data_skills[skill_id]
@@ -3385,6 +3377,7 @@ class Scene_Fusion < Scene_Base
   def start
     super
     @exit_on_next_cancel = true
+    @interpreter = Game_Interpreter.new
     create_background
     create_fuse_window
     create_result_window
@@ -3582,10 +3575,7 @@ class Scene_Fusion < Scene_Base
     resulting_persona = $game_personas[resulting_persona_id]
     $game_message.add("Are you sure you want to create the #{resulting_persona.name}")
     $game_message.add("#{Persona::PERSONA_MENU_NAME.capitalize}")
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    @interpreter.setup_choices([["Yes", "No"], 2])
     wait_for_message
     if @choice == 0
       wait_for_exp
