@@ -1428,6 +1428,23 @@ class Window_CurrentActor < Window_Base
   end
 end
 
+class Scene_Base
+  alias persona_start start
+  def start
+    persona_start
+    # We use an interpreter for compatibility with 
+    # Hime Options & Big Choices scripts
+    @interpreter = Game_Interpreter.new
+    @choice = -1
+  end
+
+  def show_message_with_choices(texts, choices, default_choice_index=2)
+    texts.each{|text| $game_message.add(text)}
+    @interpreter.setup_choices([choices, default_choice_index])
+    $game_message.choice_proc = Proc.new {|n| @choice = n }
+  end
+end
+
 class Scene_Personas < Scene_Base
 
   def start
@@ -1435,10 +1452,8 @@ class Scene_Personas < Scene_Base
     create_background
     @actor = $game_party.menu_actor
     @persona = @actor.persona
-    @choice = -1
     @message_window = Window_Message.new
     @current_actor_window = Window_CurrentActor.new
-    @interpreter = Game_Interpreter.new
     @current_actor_window.z = 98
     create_personas_window
     create_status_window
@@ -1507,12 +1522,12 @@ class Scene_Personas < Scene_Base
       persona = @personas_window.current_persona
     end
     actors_persona_msg = @actor.persona == persona ? "#{@actor.name}'s" : "the"
-    $game_message.add("Are you sure you want to release #{actors_persona_msg}")
-    $game_message.add("#{persona.name} #{Persona::PERSONA_MENU_NAME.capitalize}?")
-    if @personas_window.personas.size == 1
-      $game_message.add("This is #{@actor.name}'s last #{Persona::PERSONA_MENU_NAME.capitalize}!")
-    end
-    @interpreter.setup_choices([["Yes", "No"], 2])
+    message_texts = [
+      "Are you sure you want to release #{actors_persona_msg}",
+      "#{persona.name} #{Persona::PERSONA_MENU_NAME.capitalize}?"
+    ]
+    message_texts.push("This is #{@actor.name}'s last #{Persona::PERSONA_MENU_NAME.capitalize}!") if @personas_window.personas.size == 1
+    show_message_with_choices(message_texts, ["Yes", "No"], 2)
     wait_for_message
     if @choice == 0
       Audio.se_play(*Persona::PERSONA_RELEASE_SOUND)
@@ -1941,7 +1956,7 @@ class Scene_ForgetSkill < Scene_Base
   def create_message_window
     $game_message.clear
     @message_window = Window_Message.new
-    @choice = 0
+    @choice = -1
   end
   
   def wait_for_message
@@ -1955,9 +1970,7 @@ class Scene_ForgetSkill < Scene_Base
     persona = @status_window.persona
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
-    
-    $game_message.add("Are you sure you don't want #{persona_name}\nto learn #{new_skill_name}?")
-    @interpreter.setup_choices([["Yes", "No"], 2])
+    show_message_with_choices(["Are you sure you don't want #{persona_name}\nto learn #{new_skill_name}?"], ["Yes", "No"], 2)
     wait_for_message
     index = @status_window.index
     if @choice == 0
@@ -1977,8 +1990,7 @@ class Scene_ForgetSkill < Scene_Base
     @status_window.deactivate
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
-    $game_message.add("Are you sure you want #{persona.name} to forget\n#{skill.name} and learn #{new_skill.name}?")
-    @interpreter.setup_choices([["Yes", "No"], 2])
+    show_message_with_choices(["Are you sure you want #{persona.name} to forget\n#{skill.name} and learn #{new_skill.name}?"], ["Yes", "No"], 2)
     wait_for_message
     index = @status_window.index
     if @choice == 0
@@ -3377,7 +3389,6 @@ class Scene_Fusion < Scene_Base
   def start
     super
     @exit_on_next_cancel = true
-    @interpreter = Game_Interpreter.new
     create_background
     create_fuse_window
     create_result_window
@@ -3406,8 +3417,6 @@ class Scene_Fusion < Scene_Base
     @fuse_window.select_last
     # called when a new persona is selected
     @fuse_window.set_handler(:ok, method(:on_process_ok))
-    # called when there are no selected personas and leaves the scene
-    # @fuse_window.set_handler(:return, method(:return_scene))
     # called when there are selected personas and removes the last chosen one
     @fuse_window.set_handler(:cancel, method(:on_process_cancel))
     # shows the selected persona's status
@@ -3417,8 +3426,6 @@ class Scene_Fusion < Scene_Base
   
   def create_status_window
     @status_window = Window_PersonaStatus.new($game_party.menu_persona)
-    # called when confirming a fusion
-    @status_window.set_handler(:ok,   method(:ask_fusion_confirmation))
     # called when viewing a persona's status and returns to fuse windows
     @status_window.set_handler(:cancel,   method(:return_status))
     @status_window.deactivate.close.unselect
@@ -3440,11 +3447,13 @@ class Scene_Fusion < Scene_Base
   
   def on_process_ok
     if @fuse_window.selected_personas.size < $game_system.fuse_count
+      @exit_on_next_cancel = false
       @results_window.fusion_results_data = @fuse_window.fusion_results_data
     elsif @fuse_window.selected_personas.size == $game_system.fuse_count
+      @exit_on_next_cancel = false
       show_fusion_result
+      ask_fusion_confirmation
     end
-    @exit_on_next_cancel = false
   end
 
   def on_process_cancel
@@ -3474,7 +3483,7 @@ class Scene_Fusion < Scene_Base
     resulting_persona_id = @fuse_window.result_data[:result]
     resulting_persona = $game_personas[resulting_persona_id]
     @status_window.persona = resulting_persona
-    @status_window.show.activate.show.enable_ok
+    @status_window.show.activate.enable_ok
     @status_window.open
     @fuse_window.deactivate
     
@@ -3535,7 +3544,7 @@ class Scene_Fusion < Scene_Base
     first_user = parents_users.empty? ? nil : parents_users[0]
     parents_str = parents.collect{|p| p.name }.join(" + ")
     fusion_data = @fuse_window.result_data
-
+    
     $game_message.add("Fused #{parents_str} into\n#{@status_window.persona.name}!")
     wait_for_message
     
@@ -3553,6 +3562,7 @@ class Scene_Fusion < Scene_Base
     @extra_exp_window.close
     @status_window.close.deactivate.unselect
     @results_window.fusion_results_data = []
+    @fuse_window.selected_personas.clear
     @exit_on_next_cancel = true
     @fuse_window.reset
     @choice = -1
@@ -3569,22 +3579,29 @@ class Scene_Fusion < Scene_Base
   end
 
   def ask_fusion_confirmation
-    return if @choice == 0 # return if already accepted fusion
+    return if $game_message.choice_proc == 0 # return if already accepted fusion
     return if @fuse_window.result_data.nil?
+    @fuse_window.deactivate
+    @extra_exp_window.open
     resulting_persona_id = @fuse_window.result_data[:result]
     resulting_persona = $game_personas[resulting_persona_id]
-    $game_message.add("Are you sure you want to create the #{resulting_persona.name}")
-    $game_message.add("#{Persona::PERSONA_MENU_NAME.capitalize}")
-    @interpreter.setup_choices([["Yes", "No"], 2])
+    show_message_with_choices(
+      [
+        "Are you sure you want to create the #{resulting_persona.name}",
+        "#{Persona::PERSONA_MENU_NAME.capitalize}"
+      ],
+      ["Yes", "No"],
+      1
+    )
     wait_for_message
     if @choice == 0
       wait_for_exp
       on_fuse_confirm
     else
       on_fuse_deny
-      return
     end
   end
+  
 end
 
 #-------------------------------------------------------------------------------
