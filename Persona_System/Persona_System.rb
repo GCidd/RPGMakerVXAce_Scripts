@@ -1433,7 +1433,7 @@ class Scene_Base
   def start
     persona_start
     # We use an interpreter for compatibility with 
-    # Hime Options & Big Choices scripts
+    # Hime Options & Large Choices scripts
     @interpreter = Game_Interpreter.new
     @choice = -1
   end
