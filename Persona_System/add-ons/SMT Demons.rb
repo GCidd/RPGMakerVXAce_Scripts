@@ -167,7 +167,10 @@ class Scene_Fusion < Scene_Base
     wait_for_message
     
     for persona in parents
-      $game_party.remove_persona_by_id(persona.id)
+        # Remove from party's personas
+        $game_party.remove_persona_by_id(persona.id)
+        # Remove as an actor from party
+        $game_party.remove_actor(persona.id)
     end
     
     $game_party.add_persona_by_id(@status_window.persona.id)
@@ -175,8 +178,10 @@ class Scene_Fusion < Scene_Base
     @extra_exp_window.close
     @status_window.close.deactivate.unselect
     @results_window.fusion_results_data = []
+    @fuse_window.selected_personas.clear
     @exit_on_next_cancel = true
     @fuse_window.reset
     @choice = -1
   end
 end
+
