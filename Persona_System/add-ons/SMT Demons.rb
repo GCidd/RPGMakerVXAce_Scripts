@@ -47,15 +47,17 @@ end
 
 class Game_Party < Game_Unit
     def add_persona_by_id(persona_id, equip=false)
-        # inform the script's user about the mistake
         if $game_personas[persona_id].nil? || !$game_personas[persona_id].is_persona?
             msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id}) or one that is not a persona")
             return
         end
-        return if @personas.collect{|p| p.id}.include?(persona_id)
+        # Basically the same, without the auto equip
+        persona = $game_personas[persona_id]
+        return if persona.nil?
+        return if @personas.include?(persona)
         
-        add_actor(persona_id)
-        
+        @personas.push(persona)
+
         $game_player.refresh
         $game_map.need_refresh = true
     end
@@ -63,9 +65,13 @@ class Game_Party < Game_Unit
     alias smt_add_actor add_actor
     def add_actor(actor_id)
         smt_add_actor(actor_id)
-        if $data_actors[actor_id].is_persona?
-            @personas.push($game_personas[actor_id])
-        end
+        add_persona_by_id(actor_id) if $data_actors[actor_id].is_persona?
+    end
+
+    alias smt_remove_actor remove_actor
+    def remove_actor(actor_id)
+        smt_remove_actor(actor_id)
+        remove_persona_by_id(actor_id) if $data_actors[actor_id].is_persona?
     end
 end
 
@@ -144,7 +150,7 @@ class Scene_Menu < Scene_MenuBase
 end
 
 class Window_FusionParents < Window_Personas
-  def available_personas
+  def personas
     # Return all personas in party
     $game_party.personas
   end
