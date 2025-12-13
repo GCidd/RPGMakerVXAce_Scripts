@@ -594,7 +594,7 @@ module Persona
   # if true then duplicates cards will be included in the shuffle time
   # does not apply to blank and penalty cards. use the 
   # MIN/MAX_PENALTY/BLANK_CARDS options
-  ALLOW_DUPLICATES = false
+  SHUFFLE_ALLOW_DUPLICATES = false
   # if true then the cards set with the variable will be filtered according
   # to MIN/MAX_PENALTY_CARDS etc.
   FILTER_MANUAL_CARDS = false
