@@ -461,15 +461,6 @@ class Game_Party < Game_Unit
       return
     end
     add_persona_by_id(persona.id)
-
-    if equip
-      for actor in @actors
-        actor.change_persona(persona) if actor.can_equip_persona(persona)
-      end
-    end
-
-    $game_player.refresh
-    $game_map.need_refresh = true
   end
   
   def add_persona_by_id(persona_id, equip=false)
@@ -478,9 +469,11 @@ class Game_Party < Game_Unit
       msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id}) or one that is not a persona")
       return
     end
-    return if @personas.collect{|p| p.id}.include?(persona_id)
     
     persona = $game_personas[persona_id]
+
+    return if persona.nil?
+    return if @personas.include?(persona)
     
     @personas.push(persona)
     # auto equip new persona if there is a member that uses only one persona
@@ -504,6 +497,7 @@ class Game_Party < Game_Unit
   end
   
   def remove_persona_by_id(persona_id)
+    return if !@personas.include?($game_personas[persona_id])
     # unequip persona
     user = members.find{|m| !m.persona.nil? && m.persona.id == persona_id}
     user.remove_persona if !user.nil?
@@ -914,23 +908,21 @@ end
 class Window_Personas < Window_Command
   def initialize(actor, full_screen=false)
     @actor = actor
-    @personas = $game_party.actors_personas(@actor.id) or []
     @full_screen = full_screen
     super(0, 0)
     self.visible = false
     select_last
   end
   
+  def personas
+    $game_party.actors_personas(@actor.id) or []
+  end
+
   def actor=(actor)
     return if @actor == actor
     @actor = actor
-    @personas = $game_party.actors_personas(@actor.id)
     refresh
     select_last
-  end
-  
-  def personas
-    @personas
   end
   
   def window_width
@@ -954,17 +946,17 @@ class Window_Personas < Window_Command
   end
   
   def item_max
-    @personas.size
+    self.personas.size
   end
   
   def current_persona
-    @personas[index]
+    self.personas[index]
   end
   
   def process_handling
     return unless open? && active
     super
-    return if @personas.empty?
+    return if self.personas.empty?
     return process_equip if equip_enabled? && Input.trigger?(Persona::EQUIP_PERSONA_KEY)
     return process_release if handle?(:release)   && Input.trigger?(Persona::RELEASE_PERSONA_KEY)
   end
@@ -991,20 +983,18 @@ class Window_Personas < Window_Command
     handle?(:equip)
   end
   
-  def available_personas
-    $game_party.actors_personas(@actor.id)
-  end
-
   def refresh
     super
     contents.clear
-    @personas = available_personas
     draw_all_items
   end
   
   def draw_all_items
-    draw_no_personas_msg if @personas.empty?
-    super
+    if self.personas.empty?
+      draw_no_personas_msg
+    else
+      super
+    end
   end
   
   def draw_no_personas_msg
@@ -1012,11 +1002,11 @@ class Window_Personas < Window_Command
   end
   
   def is_persona_enabled_at?(index)
-    return @actor.can_equip_persona(@personas[index])
+    return @actor.can_equip_persona(self.personas[index])
   end
 
   def draw_item(index)
-    persona = @personas[index]
+    persona = self.personas[index]
     
     enabled = is_persona_enabled_at?(index)
     rect = item_rect(index)
@@ -1039,7 +1029,7 @@ class Window_Personas < Window_Command
   end
   
   def draw_item_background(index)
-    equipped_persona_index = @personas.index(@actor.persona)
+    equipped_persona_index = self.personas.index(@actor.persona)
     if index == equipped_persona_index
       color = pending_color
       color.alpha = 100
@@ -1048,29 +1038,29 @@ class Window_Personas < Window_Command
   end
   
   def persona_equippable?
-    persona = @personas[index]
+    persona = self.personas[index]
     return @actor.can_equip_persona(persona)
   end
   
   def process_ok
-    return if @personas.size == 0
+    return if self.personas.size == 0
     Sound.play_ok
     Input.update
     deactivate
     
-    persona = @personas[index]
+    persona = self.personas[index]
     $game_party.menu_persona = persona
     call_ok_handler
   end
   
   def current_item_enabled?
-    persona = @personas[index]
+    persona = self.personas[index]
     enabled = $game_party.persona_available?(persona) || @actor.persona == persona
     return enabled
   end
   
   def select_last
-    if @personas.nil? || $game_party.menu_persona.nil?
+    if self.personas.nil? || $game_party.menu_persona.nil?
       select(-1)
     else
       select($game_party.menu_persona.index || 0)
@@ -3060,10 +3050,21 @@ class Window_FusionParents < Window_Personas
     @fuse_count = fuse_count
     @fusion_results_data = []
     @result_data = nil
-    @personas = available_personas
     super($game_party.menu_actor)
     self.visible = true
     select_last
+  end
+  
+  def personas
+    actors = $game_party.members.select{ |a| Persona::CAN_FUSE_ACTORS_PERSONAS.include?(a.id) }
+    personas = []
+    for actor in actors
+      actors_personas = $game_party.actors_personas(actor.id)
+      # Don't include the exclusive persona if it's not allowed
+      next if !actor.has_exclusive_persona? && !Persona::CAN_FUSE_EXCLUSIVE_PERSONAS 
+      personas.concat(actors_personas)
+    end
+    return personas
   end
   
   def selected_personas
@@ -3083,7 +3084,6 @@ class Window_FusionParents < Window_Personas
     @selected_personas = []
     @fusion_results_data = []
     @result_data = nil
-    @personas = available_personas
     refresh
   end
   
@@ -3096,7 +3096,7 @@ class Window_FusionParents < Window_Personas
       return fusion_data[:conditions].empty? ? true : $game_personas.fusion_conditions_met?(fusion_data)
     end
 
-    for last_parent in @personas
+    for last_parent in self.personas
       if @selected_personas.include?(last_parent)
         @fusion_results_data.push(nil) 
       else
@@ -3129,7 +3129,7 @@ class Window_FusionParents < Window_Personas
   
   def process_status
     Sound.play_ok
-    $game_party.menu_persona = @personas[index]
+    $game_party.menu_persona = self.personas[index]
     call_status_handler
   end
   
@@ -3139,18 +3139,6 @@ class Window_FusionParents < Window_Personas
 
   def status_enabled?
     handle?(:status)
-  end
-  
-  def available_personas
-    actors = $game_party.members.select{ |a| Persona::CAN_FUSE_ACTORS_PERSONAS.include?(a.id) }
-    personas = []
-    for actor in actors
-      actors_personas = $game_party.actors_personas(actor.id)
-      # Don't include the exclusive persona if it's not allowed
-      next if !actor.has_exclusive_persona? && !Persona::CAN_FUSE_EXCLUSIVE_PERSONAS 
-      personas.concat(actors_personas)
-    end
-    return personas
   end
   
   def process_cancel
@@ -3180,7 +3168,11 @@ class Window_FusionParents < Window_Personas
   end
   
   def process_ok
-    persona = @personas[index]
+    if self.personas.size == 0
+      Sound.play_cancel
+      return
+    end
+    persona = self.personas[index]
     if fusion_selection_valid?(index)
       @selected_personas.push(persona)
       Sound.play_ok
@@ -3204,12 +3196,12 @@ class Window_FusionParents < Window_Personas
   end
   
   def is_persona_enabled_at?(index)
-    return Persona::CAN_FUSE_EXCLUSIVE_PERSONAS if !@personas[index].current_user.nil? && @personas[index].current_user.has_exclusive_persona?
+    return Persona::CAN_FUSE_EXCLUSIVE_PERSONAS if !self.personas[index].current_user.nil? && self.personas[index].current_user.has_exclusive_persona?
     return fusion_selection_valid?(index)
   end
 
   def fusion_selection_valid?(index)
-    return false if !@selected_personas.index(@personas[index]).nil?
+    return false if !@selected_personas.index(self.personas[index]).nil?
     return true if @selected_personas.empty? || @selected_personas.length < @fuse_count - 1
     # as long as a child can be created with this one and 
     # the result does not exist in the party
@@ -3219,7 +3211,7 @@ class Window_FusionParents < Window_Personas
   end
 
   def draw_item_background(index)
-    if !@selected_personas.index(@personas[index]).nil?
+    if !@selected_personas.index(self.personas[index]).nil?
       color = pending_color
       color.alpha = 100
       contents.fill_rect(item_rect(index), color)
@@ -3242,16 +3234,19 @@ class Window_FusionChildren < Window_Personas
   include Persona
   
   def initialize
-    super($game_party.menu_actor)
     @actor = nil
     @fusion_results_data = [nil]
-    @personas = []
+    super($game_party.menu_actor)
     self.x = Graphics.width / 2
     self.visible = true
     self.arrows_visible = false
     deactivate
     unselect
     refresh
+  end
+
+  def personas
+    @fusion_results_data.map{|f| f.nil? ? nil : $game_personas[f[:result]]}
   end
 
   def process_handling
@@ -3277,7 +3272,6 @@ class Window_FusionChildren < Window_Personas
 
   def fusion_results_data=(fusion_results_data)
     @fusion_results_data = fusion_results_data
-    @personas = @fusion_results_data.map{|f| f.nil? ? nil : $game_personas[f[:result]]}
     refresh
   end
   
@@ -3290,7 +3284,7 @@ class Window_FusionChildren < Window_Personas
   end
   
   def draw_item(index)
-    persona = @personas[index]
+    persona = self.personas[index]
     return if persona.nil?
     super(index)
   end
@@ -3591,7 +3585,7 @@ class Scene_Fusion < Scene_Base
         "#{Persona::PERSONA_MENU_NAME.capitalize}"
       ],
       ["Yes", "No"],
-      1
+      2
     )
     wait_for_message
     if @choice == 0
@@ -3833,7 +3827,7 @@ class Game_System
     # remove all bank/penalty
     cards = cards.select{|c| ["Blank", "Penalty"].index(c).nil? }
 
-    if !Persona::ALLOW_DUPLICATES
+    if !Persona::SHUFFLE_ALLOW_DUPLICATES
       cards = cards.uniq
     end
     
