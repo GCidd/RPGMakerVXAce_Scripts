@@ -1713,7 +1713,7 @@ class Game_Actor < Game_Battler
     @level += 1
     self.class.learnings.each do |learning|
       if is_persona? && @skills.size >= @max_skills
-        @extra_skills.push(learning.skill_id) if learning.level == @level
+        @extra_skills.push(learning.skill_id) if learning.level == @level && !@extra_skills.include?(learning.skill_id)
       else
         learn_skill(learning.skill_id) if learning.level == @level
       end
@@ -1724,17 +1724,14 @@ class Game_Actor < Game_Battler
   def change_exp(exp, show)
     persona_forget_ce(exp, show)
     if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle)
-      if !has_skill_slot?
+      if @skills.size >= @max_skills
+        $game_party.menu_persona = self
         SceneManager.call(Scene_ForgetSkill)
       end
     end
     refresh
   end
   
-  def has_skill_slot?
-    return @skills.size < @max_skills
-  end
-
   def replace_skill(old_skill, new_skill)
     index = @skills.index(old_skill.id)
     @skills[index] = new_skill.id
@@ -1758,9 +1755,9 @@ end
 
 class Window_PersonaStatus < Window_Command
   alias persona_forget_init initialize
-  def initialize(persona)
+  def initialize(persona, enable_cursor=false)
     persona_forget_init(persona)
-    if !extra_skills.empty?
+    if enable_cursor
       clear_command_list
       make_command_list
     end
@@ -1902,7 +1899,7 @@ class Scene_ForgetSkill < Scene_Base
   end
   
   def create_status_window
-    @status_window = Window_PersonaStatus.new($game_party.menu_persona)
+    @status_window = Window_PersonaStatus.new($game_party.menu_persona, enable_cursor=true)
     @status_window.set_handler(:cancel,   method(:cancel_forget))
     @status_window.set_handler(:forget,   method(:skill_forget))
     @status_window.show.activate
@@ -3306,7 +3303,7 @@ end
 
 class Window_PersonaStatus < Window_Command 
   alias persona_fuse_init initialize
-  def initialize(persona)
+  def initialize(persona, enable_cursor=false)
     persona_fuse_init(persona)
     @bonus_exp = 0
     @start_exp = false
