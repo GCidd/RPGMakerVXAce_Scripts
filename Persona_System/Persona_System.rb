@@ -905,6 +905,53 @@ class Window_MenuCommand < Window_Command
   end
 end
 
+class Window_Command < Window_Selectable
+  alias persona_init initialize
+  def initialize(x, y)
+    @drawn_items = []
+    persona_init(x, y)
+  end
+
+  alias persona_refresh refresh
+  def refresh
+    @drawn_items = []
+    persona_refresh
+  end
+
+  alias persona_update update
+  def update
+    persona_update
+    draw_around_current_index if open? && active
+  end
+
+  def draw_all_items
+    draw_around_current_index
+  end
+
+  def draw_around_current_index
+    draw_start = self.index - self.visible_line_number
+    draw_end = self.index + self.visible_line_number
+    draw_items(draw_start, draw_end)
+  end
+
+  def draw_items(start_index, end_index)
+    for i in start_index..end_index
+      next if i < 0 || i >= item_max || @drawn_items.include?(i)
+      draw_item(i)
+      @drawn_items.push(i)
+    end
+  end
+
+  def redraw_around_current_index
+    draw_start = self.index - self.visible_line_number
+    draw_end = self.index + self.visible_line_number
+    for i in draw_start..draw_end
+      clear_item(i)
+      draw_item(i)
+    end
+  end
+end
+
 class Window_Personas < Window_Command
   def initialize(actor, full_screen=false)
     @actor = actor
@@ -981,12 +1028,6 @@ class Window_Personas < Window_Command
   
   def equip_enabled?
     handle?(:equip)
-  end
-  
-  def refresh
-    super
-    contents.clear
-    draw_all_items
   end
   
   def draw_all_items
@@ -2209,7 +2250,7 @@ class Window_ArcanaInfo < Window_Base
   def window_height
     Graphics.height * 0.35
   end
-  
+
   def refresh
     contents.clear
     return if @selected_arcana.nil?
@@ -3041,7 +3082,7 @@ class Window_ExtraExp < Window_Base
 end
 
 class Window_FusionParents < Window_Personas
-  attr_reader :result_data, :fusion_results_data
+  attr_reader :result_data, :fusion_results_data, :selected_personas
   def initialize(fuse_count)
     @selected_personas = []
     @fuse_count = fuse_count
@@ -3062,10 +3103,6 @@ class Window_FusionParents < Window_Personas
       personas.concat(actors_personas)
     end
     return personas
-  end
-  
-  def selected_personas
-    @selected_personas
   end
   
   def pop_persona
@@ -3143,7 +3180,6 @@ class Window_FusionParents < Window_Personas
     Input.update
     pop_persona
     call_cancel_handler
-    refresh_children
     refresh
   end
   
@@ -3163,7 +3199,7 @@ class Window_FusionParents < Window_Personas
     refresh_children
     super
   end
-  
+
   def process_ok
     if self.personas.size == 0
       Sound.play_cancel
@@ -3239,7 +3275,6 @@ class Window_FusionChildren < Window_Personas
     self.arrows_visible = false
     deactivate
     unselect
-    refresh
   end
 
   def personas
@@ -3250,17 +3285,17 @@ class Window_FusionChildren < Window_Personas
     return
   end
   
-  def update_cursor
-    return
-  end
-  
   def top_row=(row)
     super(row)
+    draw_around_current_index
   end
 
-  def refresh
-    contents.clear
-    draw_all_items
+  def update
+    super
+  end
+
+  def update_cursor
+    return
   end
   
   def actor=(actor)
@@ -3276,10 +3311,6 @@ class Window_FusionChildren < Window_Personas
     return true
   end
 
-  def draw_all_items
-    item_max.times {|i| draw_item(i) }
-  end
-  
   def draw_item(index)
     persona = self.personas[index]
     return if persona.nil?
@@ -3511,6 +3542,7 @@ class Scene_Fusion < Scene_Base
   
   def update
     super
+    @results_window.index = @fuse_window.index
     @results_window.top_row = @fuse_window.top_row
   end
 
