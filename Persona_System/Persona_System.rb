@@ -2019,7 +2019,7 @@ class Scene_ForgetSkill < Scene_Base
     persona = @status_window.persona
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
-    show_message_with_choices(["Are you sure you don't want #{persona_name}\nto learn #{new_skill_name}?"], ["Yes", "No"], 2)
+    show_message_with_choices(["Are you sure you don't want #{persona.name}\nto learn #{new_skill.name}?"], ["Yes", "No"], 2)
     wait_for_message
     index = @status_window.index
     if @choice == 0
@@ -3061,7 +3061,6 @@ class Game_System
     SceneManager.call(Scene_Fusion)
     Fiber.yield
   end
-  
 end
 
 class Window_ExtraExp < Window_Base
