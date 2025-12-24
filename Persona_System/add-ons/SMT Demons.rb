@@ -85,7 +85,6 @@ end
 class Window_PersonaStatus < Window_Command
   # Patch to work with Scene_Status that expects an actor= method
   def actor=(actor)
-    return if @actor == actor
     @persona = actor
     clear_command_list
     make_command_list
