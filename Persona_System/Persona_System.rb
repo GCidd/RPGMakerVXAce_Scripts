@@ -1166,7 +1166,6 @@ class Window_PersonaStatus < Window_Command
   end
   
   def persona=(persona)
-    return if @persona == persona
     @persona = persona
     clear_command_list
     make_command_list
@@ -1776,14 +1775,13 @@ class Game_Actor < Game_Battler
   def init_skills
     if actor.is_persona?
       @skills = []
-      # reverse learning so that persona doesn't learn low level skills
-      self.class.learnings.reverse.each do |learning|
-        learn_skill(learning.skill_id) if learning.level <= @level
-      end
-      # Take only the last max_skills skills
-      if @skills.size > actor.max_skills
-        @skills = @skills[-actor.max_skills..-1]
-      end
+      # learn the highest level skills up to max skills allowed
+      self.class
+      .learnings
+      .reject{|learning| learning.level > @level}
+      .sort_by{|learning| learning.level }
+      .last(actor.max_skills)
+      .each { |learning| learn_skill(learning.skill_id) }
     else
       persona_forget_is
     end
@@ -1798,14 +1796,26 @@ class Game_Actor < Game_Battler
         learn_skill(learning.skill_id) if learning.level == @level
       end
     end
-    if call_forget_skill_scene?
+    call_forget_skill_scene_if_needed
+  end
+  
+  alias persona_learn_skill learn_skill
+  def learn_skill(skill_id)
+    if !is_persona?
+      persona_learn_skill(skill_id)
+    elsif @skills.size < @max_skills
+      persona_learn_skill(skill_id)
+    else
+      @extra_skills.push(skill_id)
+      call_forget_skill_scene_if_needed
+    end
+  end
+
+  def call_forget_skill_scene_if_needed
+    if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle) && !SceneManager.scene_is?(Scene_Fusion)
       $game_party.menu_persona = self
       SceneManager.call(Scene_ForgetSkill)
     end
-  end
-  
-  def call_forget_skill_scene?
-    return @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle) && !SceneManager.scene_is?(Scene_Fusion)
   end
 
   alias persona_forget_ce change_exp
@@ -2046,7 +2056,8 @@ class Scene_ForgetSkill < Scene_Base
       Audio.se_play(*Persona::PERSONA_EQUIP_SOUND)
       persona.replace_skill(skill, new_skill)
       persona.extra_skills.delete_at(0)
-      @status_window.refresh
+      # Simple way to refresh window and skills
+      @status_window.persona = persona
       $game_message.add("#{persona.name} forgot #{skill.name} and learned\n#{new_skill.name}!")
       wait_for_message
       finish_new_skill
