@@ -46,6 +46,11 @@ class Window_MenuCommand < Window_Command
 end
 
 class Game_Party < Game_Unit
+  def battle_personas
+    # Return all personas in party
+    battle_members.select{|m| m.is_persona? }
+  end
+
   def add_persona_by_id(persona_id, equip=false)
     if $game_personas[persona_id].nil? || !$game_personas[persona_id].is_persona?
       msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id}) or one that is not a persona")
