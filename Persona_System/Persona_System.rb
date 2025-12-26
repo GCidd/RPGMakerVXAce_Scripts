@@ -417,7 +417,7 @@ class Game_Party < Game_Unit
   end
   
   def battle_personas
-    members.select{|m| !m.persona.nil?}
+    members.select{|m| !m.persona.nil?}.collect{|m| m.persona }
   end
   
   def persona_in_party(persona_name=nil, persona_id=nil)
@@ -1497,9 +1497,9 @@ class Window_CurrentActor < Window_Base
 end
 
 class Scene_Base
-  alias persona_start start
-  def start
-    persona_start
+  alias persona_init initialize
+  def initialize
+    persona_init
     # We use an interpreter for compatibility with 
     # Hime Options & Large Choices scripts
     @interpreter = Game_Interpreter.new
@@ -1789,11 +1789,14 @@ class Game_Actor < Game_Battler
   
   def level_up
     @level += 1
-    self.class.learnings.each do |learning|
+    level_up_learnings = self.class
+    .learnings
+    .reject{|learning| learning.level != @level}
+    level_up_learnings.each do |learning|
       if is_persona? && @skills.size >= @max_skills
-        @extra_skills.push(learning.skill_id) if learning.level == @level && !@extra_skills.include?(learning.skill_id)
+        @extra_skills.push(learning.skill_id) unless @extra_skills.include?(learning.skill_id)
       else
-        learn_skill(learning.skill_id) if learning.level == @level
+        learn_skill(learning.skill_id)
       end
     end
     call_forget_skill_scene_if_needed
@@ -1801,12 +1804,13 @@ class Game_Actor < Game_Battler
   
   alias persona_learn_skill learn_skill
   def learn_skill(skill_id)
+    return if @skills.include?(skill_id)
     if !is_persona?
       persona_learn_skill(skill_id)
     elsif @skills.size < @max_skills
       persona_learn_skill(skill_id)
     else
-      @extra_skills.push(skill_id)
+      @extra_skills.push(skill_id) unless @extra_skills.include?(skill_id)
       call_forget_skill_scene_if_needed
     end
   end
@@ -1815,6 +1819,7 @@ class Game_Actor < Game_Battler
     if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle) && !SceneManager.scene_is?(Scene_Fusion)
       $game_party.menu_persona = self
       SceneManager.call(Scene_ForgetSkill)
+      Fiber.yield
     end
   end
 
@@ -1952,17 +1957,17 @@ class Window_PersonaStatus < Window_Command
 end
 
 class Scene_ForgetSkill < Scene_Base
-  alias persona_forget_start start
-  def start(background=true)
-    persona_forget_start
+  def start
+    super
     create_windows
-    create_background if background
+    create_background
   end
   
-  def start_without_bg
-    start(false)
+  def start_without_background
+    create_main_viewport
+    create_windows
   end
-  
+
   def create_windows
     create_main_viewport
     create_status_window
@@ -3645,9 +3650,6 @@ class Scene_Fusion < Scene_Base
       end
       $game_party.menu_persona = persona
       SceneManager.call(Scene_ForgetSkill)
-      SceneManager.scene.start_without_bg
-      SceneManager.scene.show_message
-      SceneManager.scene.update while SceneManager.scene_is?(Scene_ForgetSkill)
     end
   end
   
@@ -3762,16 +3764,16 @@ module BattleManager
       Graphics.transition(30)
       persona_shuffle_pv
     end
-      
+    
     alias persona_shuffle_ge gain_exp
     def gain_exp
       persona_shuffle_ge
       $game_party.battle_personas.each do |m|
+        $game_party.menu_persona = m
         next if m.extra_skills.empty?
         $game_party.menu_persona = m
         SceneManager.call(Scene_ForgetSkill)
-        SceneManager.scene.start_without_bg
-        SceneManager.scene.show_message
+        SceneManager.scene.start_without_background
         SceneManager.scene.update while SceneManager.scene_is?(Scene_ForgetSkill)
       end
     end
