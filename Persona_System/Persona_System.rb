@@ -417,7 +417,7 @@ class Game_Party < Game_Unit
   end
   
   def battle_personas
-    members.select{|m| !m.persona.nil?}
+    members.select{|m| !m.persona.nil?}.collect{|m| m.persona }
   end
   
   def persona_in_party(persona_name=nil, persona_id=nil)
@@ -461,15 +461,6 @@ class Game_Party < Game_Unit
       return
     end
     add_persona_by_id(persona.id)
-
-    if equip
-      for actor in @actors
-        actor.change_persona(persona) if actor.can_equip_persona(persona)
-      end
-    end
-
-    $game_player.refresh
-    $game_map.need_refresh = true
   end
   
   def add_persona_by_id(persona_id, equip=false)
@@ -478,9 +469,11 @@ class Game_Party < Game_Unit
       msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id}) or one that is not a persona")
       return
     end
-    return if @personas.collect{|p| p.id}.include?(persona_id)
     
     persona = $game_personas[persona_id]
+
+    return if persona.nil?
+    return if @personas.include?(persona)
     
     @personas.push(persona)
     # auto equip new persona if there is a member that uses only one persona
@@ -504,6 +497,7 @@ class Game_Party < Game_Unit
   end
   
   def remove_persona_by_id(persona_id)
+    return if !@personas.include?($game_personas[persona_id])
     # unequip persona
     user = members.find{|m| !m.persona.nil? && m.persona.id == persona_id}
     user.remove_persona if !user.nil?
@@ -524,7 +518,7 @@ class Game_Party < Game_Unit
   end
   
   def menu_persona
-    @personas.find{|p| p.id == @menu_persona_id} || menu_personas[0]
+    @personas.find{|p| p.id == @menu_persona_id} || $game_party.personas[0]
   end
   
   def menu_persona=(persona)
@@ -617,6 +611,7 @@ class Game_Personas
   end
 
   def register_fusion(parents, result, conditions)
+    return if parents.include?(result)
     @fusion_map.push({
       :parents => parents,
       :result => result,
@@ -655,9 +650,15 @@ class Game_Personas
     return nil if resulting_personas.empty?
     resulting_level = Persona.LEVEL_CALC_FUNC(parent_a, parent_b, parent_c)
     sorted_personas = resulting_personas.sort_by{|p| p.actor.initial_level < resulting_level ? 999999 : p.actor.initial_level - resulting_level}
+    
+    # Skip if result is one of the parents
+    parents = [parent_a_id, parent_b_id, parent_c_id]
+    result = sorted_personas[0].id
+    return nil if parents.include?(result)
+
     return {
-      :parents => [parent_a_id, parent_b_id, parent_c_id],
-      :result => sorted_personas[0].id,
+      :parents => parents,
+      :result => result,
       :conditions => {}
     }
   end
@@ -911,26 +912,79 @@ class Window_MenuCommand < Window_Command
   end
 end
 
+class Window_Command < Window_Selectable
+  alias persona_init initialize
+  def initialize(x, y, lazy_load=false)
+    @drawn_items = []
+    @lazy_load = lazy_load
+    persona_init(x, y)
+  end
+
+  alias persona_refresh refresh
+  def refresh
+    @drawn_items = []
+    persona_refresh
+  end
+
+  alias persona_cm process_cursor_move
+  def process_cursor_move
+    last_index = @index
+    persona_cm
+    if @lazy_load
+      draw_around_current_index if open? && active && @index != last_index
+    end
+  end
+
+  def draw_all_items
+    if @lazy_load
+      draw_around_current_index
+    else
+      super
+    end
+  end
+
+  def draw_around_current_index
+    draw_start = self.index - self.visible_line_number
+    draw_end = self.index + self.visible_line_number
+    draw_items(draw_start, draw_end)
+  end
+
+  def draw_items(start_index, end_index)
+    for i in start_index..end_index
+      next if i < 0 || i >= item_max || @drawn_items.include?(i)
+      draw_item(i)
+      @drawn_items.push(i)
+    end
+  end
+
+  def redraw_around_current_index
+    draw_start = self.index - self.visible_line_number
+    draw_end = self.index + self.visible_line_number
+    for i in draw_start..draw_end
+      clear_item(i)
+      draw_item(i)
+    end
+  end
+end
+
 class Window_Personas < Window_Command
-  def initialize(actor, full_screen=false)
+  def initialize(actor, full_screen=false, lazy_load=true)
     @actor = actor
-    @personas = $game_party.actors_personas(@actor.id) or []
     @full_screen = full_screen
-    super(0, 0)
+    super(0, 0, lazy_load=lazy_load)
     self.visible = false
     select_last
   end
   
+  def personas
+    $game_party.actors_personas(@actor.id) or []
+  end
+
   def actor=(actor)
     return if @actor == actor
     @actor = actor
-    @personas = $game_party.actors_personas(@actor.id)
     refresh
     select_last
-  end
-  
-  def personas
-    @personas
   end
   
   def window_width
@@ -954,17 +1008,17 @@ class Window_Personas < Window_Command
   end
   
   def item_max
-    @personas.size
+    self.personas.size
   end
   
   def current_persona
-    @personas[index]
+    self.personas[index]
   end
   
   def process_handling
     return unless open? && active
     super
-    return if @personas.empty?
+    return if self.personas.empty?
     return process_equip if equip_enabled? && Input.trigger?(Persona::EQUIP_PERSONA_KEY)
     return process_release if handle?(:release)   && Input.trigger?(Persona::RELEASE_PERSONA_KEY)
   end
@@ -991,34 +1045,38 @@ class Window_Personas < Window_Command
     handle?(:equip)
   end
   
-  def available_personas
-    $game_party.actors_personas(@actor.id)
-  end
-
-  def refresh
-    super
-    contents.clear
-    @personas = available_personas
-    draw_all_items
-  end
-  
   def draw_all_items
-    draw_no_personas_msg if @personas.empty?
-    super
+    if self.personas.empty?
+      draw_no_personas_msg
+    else
+      super
+    end
   end
   
   def draw_no_personas_msg
     draw_text(0, 0, width, line_height, Persona::NO_PERSONAS_MSG)
   end
   
-  def is_persona_enabled_at?(index)
-    return @actor.can_equip_persona(@personas[index])
+  def command_enabled?(index)
+    return @actor.can_equip_persona(self.personas[index])
   end
 
+  def add_command
+    super
+  end
+  
+  def item_rect(index)
+    rect = Rect.new
+    rect.width = item_width
+    rect.height = item_height
+    rect.y = index / col_max * item_height
+    rect
+  end
+  
   def draw_item(index)
-    persona = @personas[index]
+    persona = self.personas[index]
     
-    enabled = is_persona_enabled_at?(index)
+    enabled = command_enabled?(index)
     rect = item_rect(index)
     draw_item_background(index)
     draw_actor_face(persona, rect.x + 1, rect.y + 1, enabled)
@@ -1039,7 +1097,7 @@ class Window_Personas < Window_Command
   end
   
   def draw_item_background(index)
-    equipped_persona_index = @personas.index(@actor.persona)
+    equipped_persona_index = self.personas.index(@actor.persona)
     if index == equipped_persona_index
       color = pending_color
       color.alpha = 100
@@ -1048,29 +1106,29 @@ class Window_Personas < Window_Command
   end
   
   def persona_equippable?
-    persona = @personas[index]
+    persona = self.personas[index]
     return @actor.can_equip_persona(persona)
   end
   
   def process_ok
-    return if @personas.size == 0
+    return if self.personas.size == 0
     Sound.play_ok
     Input.update
     deactivate
     
-    persona = @personas[index]
+    persona = self.personas[index]
     $game_party.menu_persona = persona
     call_ok_handler
   end
   
   def current_item_enabled?
-    persona = @personas[index]
+    persona = self.personas[index]
     enabled = $game_party.persona_available?(persona) || @actor.persona == persona
     return enabled
   end
   
   def select_last
-    if @personas.nil? || $game_party.menu_persona.nil?
+    if self.personas.nil? || $game_party.menu_persona.nil?
       select(-1)
     else
       select($game_party.menu_persona.index || 0)
@@ -1108,8 +1166,9 @@ class Window_PersonaStatus < Window_Command
   end
   
   def persona=(persona)
-    return if @persona == persona
     @persona = persona
+    clear_command_list
+    make_command_list
     refresh
   end
   
@@ -1184,7 +1243,7 @@ class Window_PersonaStatus < Window_Command
   
   def draw_block3(y)
     draw_parameters(10, y)
-    draw_skills(100, y)
+    draw_all_items
   end
   
   def draw_block4(y)
@@ -1251,24 +1310,33 @@ class Window_PersonaStatus < Window_Command
     draw_text(x, y, 180, line_height, skill_name)
   end
   
-  def draw_skills(x, y)
-    col_width = ((self.width - x) / 3).to_i
-    cols_max_x = [0, 0] # first and second cols only needed
-    @persona.skills.each_with_index do |item, i|
-      col = i.div(6)
-      offset_x = col_width * col 
-      offset_y = line_height * i.divmod(6)[1]
-      draw_item_name(item, x + offset_x, y + offset_y, true, col_width - 24)
-    end
-    next_skills_i = @persona.skills.length
-    @persona.next_skills.each_with_index do |item, i|
-      i += next_skills_i
-      offset_x = 150 * (i/6).to_i
-      offset_y = line_height * i.divmod(6)[1]
-      draw_text(x + offset_x, y + offset_y, col_width, line_height, "-------")
-    end
+  def item_rect_for_text(index)
+    rect = super(index)
+    # offset is added only if there is an icon to draw
+    # icon is usually there when there is a skill name
+    rect.x += 24 if !@list[index][:ext].nil?
+    rect
+  end
+
+  def draw_item(index)
+    item = @list[index]
+    return if item.nil?
+    icon_index = (item.nil? || item[:ext].nil?) ? nil : item[:ext][:icon_index] 
+    rect = item_rect(index)
+    draw_icon(icon_index, rect.x, rect.y) if !icon_index.nil?
+    change_color(normal_color, command_enabled?(index))
+    draw_text(item_rect_for_text(index), command_name(index), alignment)
   end
   
+  def make_command_list
+    @persona.skills.each_with_index do |item, i|
+      add_command(item.name, "skill_#{i}", true, {:icon_index=>item.icon_index})
+    end
+    @persona.next_skills.each_with_index do |item, i|
+      add_command("-------", "skill_#{i}", true)
+    end
+  end
+
   def draw_ele_rates(x, y)
     icons = PERSONA_ELE_ICON_INDEXES
     10.times do |i|
@@ -1428,6 +1496,23 @@ class Window_CurrentActor < Window_Base
   end
 end
 
+class Scene_Base
+  alias persona_init initialize
+  def initialize
+    persona_init
+    # We use an interpreter for compatibility with 
+    # Hime Options & Large Choices scripts
+    @interpreter = Game_Interpreter.new
+    @choice = -1
+  end
+
+  def show_message_with_choices(texts, choices, default_choice_index=2)
+    texts.each{|text| $game_message.add(text)}
+    @interpreter.setup_choices([choices, default_choice_index])
+    $game_message.choice_proc = Proc.new {|n| @choice = n }
+  end
+end
+
 class Scene_Personas < Scene_Base
 
   def start
@@ -1435,7 +1520,6 @@ class Scene_Personas < Scene_Base
     create_background
     @actor = $game_party.menu_actor
     @persona = @actor.persona
-    @choice = -1
     @message_window = Window_Message.new
     @current_actor_window = Window_CurrentActor.new
     @current_actor_window.z = 98
@@ -1506,15 +1590,12 @@ class Scene_Personas < Scene_Base
       persona = @personas_window.current_persona
     end
     actors_persona_msg = @actor.persona == persona ? "#{@actor.name}'s" : "the"
-    $game_message.add("Are you sure you want to release #{actors_persona_msg}")
-    $game_message.add("#{persona.name} #{Persona::PERSONA_MENU_NAME.capitalize}?")
-    if @personas_window.personas.size == 1
-      $game_message.add("This is #{@actor.name}'s last #{Persona::PERSONA_MENU_NAME.capitalize}!")
-    end
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    message_texts = [
+      "Are you sure you want to release #{actors_persona_msg}",
+      "#{persona.name} #{Persona::PERSONA_MENU_NAME.capitalize}?"
+    ]
+    message_texts.push("This is #{@actor.name}'s last #{Persona::PERSONA_MENU_NAME.capitalize}!") if @personas_window.personas.size == 1
+    show_message_with_choices(message_texts, ["Yes", "No"], 2)
     wait_for_message
     if @choice == 0
       Audio.se_play(*Persona::PERSONA_RELEASE_SOUND)
@@ -1529,7 +1610,7 @@ class Scene_Personas < Scene_Base
       @choice = -1
     end
   end
-  
+
   def on_persona_ok
     @status_window.persona = @personas_window.current_persona
     @status_window.show.activate
@@ -1694,13 +1775,13 @@ class Game_Actor < Game_Battler
   def init_skills
     if actor.is_persona?
       @skills = []
-      # reverse learning so that persona doesn't learn low level skills
-      self.class.learnings.reverse.each do |learning|
-        learn_skill(learning.skill_id) if learning.level <= @level
-        # is used instead of @max_skills because persona sestup is done 
-        # after actor initialization
-        break if @skills.size >= actor.max_skills 
-      end
+      # learn the highest level skills up to max skills allowed
+      self.class
+      .learnings
+      .reject{|learning| learning.level > @level}
+      .sort_by{|learning| learning.level }
+      .last(actor.max_skills)
+      .each { |learning| learn_skill(learning.skill_id) }
     else
       persona_forget_is
     end
@@ -1708,30 +1789,46 @@ class Game_Actor < Game_Battler
   
   def level_up
     @level += 1
-    self.class.learnings.each do |learning|
+    level_up_learnings = self.class
+    .learnings
+    .reject{|learning| learning.level != @level}
+    level_up_learnings.each do |learning|
       if is_persona? && @skills.size >= @max_skills
-        @extra_skills.push(learning.skill_id) if learning.level == @level
+        @extra_skills.push(learning.skill_id) unless @extra_skills.include?(learning.skill_id)
       else
-        learn_skill(learning.skill_id) if learning.level == @level
+        learn_skill(learning.skill_id)
       end
     end
+    call_forget_skill_scene_if_needed
   end
   
+  alias persona_learn_skill learn_skill
+  def learn_skill(skill_id)
+    return if @skills.include?(skill_id)
+    if !is_persona?
+      persona_learn_skill(skill_id)
+    elsif @skills.size < @max_skills
+      persona_learn_skill(skill_id)
+    else
+      @extra_skills.push(skill_id) unless @extra_skills.include?(skill_id)
+      call_forget_skill_scene_if_needed
+    end
+  end
+
+  def call_forget_skill_scene_if_needed
+    if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle) && !SceneManager.scene_is?(Scene_Fusion)
+      $game_party.menu_persona = self
+      SceneManager.call(Scene_ForgetSkill)
+      Fiber.yield
+    end
+  end
+
   alias persona_forget_ce change_exp
   def change_exp(exp, show)
     persona_forget_ce(exp, show)
-    if @extra_skills.size > 0 && !SceneManager.scene_is?(Scene_Battle)
-      if !has_skill_slot?
-        SceneManager.call(Scene_ForgetSkill)
-      end
-    end
     refresh
   end
   
-  def has_skill_slot?
-    return @skills.size < @max_skills
-  end
-
   def replace_skill(old_skill, new_skill)
     index = @skills.index(old_skill.id)
     @skills[index] = new_skill.id
@@ -1755,9 +1852,9 @@ end
 
 class Window_PersonaStatus < Window_Command
   alias persona_forget_init initialize
-  def initialize(persona)
+  def initialize(persona, enable_cursor=false)
     persona_forget_init(persona)
-    if !extra_skills.empty?
+    if enable_cursor
       clear_command_list
       make_command_list
     end
@@ -1766,25 +1863,6 @@ class Window_PersonaStatus < Window_Command
   
   def extra_skills
     @persona ? @persona.extra_skills : []
-  end
-  
-  def draw_skills(x, y)
-    col_width = ((self.width - x) / 3).to_i
-    cols_max_x = [0, 0] # first and second cols only needed
-    @persona.skills.each_with_index do |item, i|
-      col = i.div(6)
-      offset_x = col_width * col 
-      offset_y = line_height * i.divmod(6)[1]
-      draw_item_name(item, x + offset_x, y + offset_y, true, col_width - 24)
-    end
-    next_skills_i = @persona.skills.length
-    @persona.next_skills.each_with_index do |item, i|
-      i += next_skills_i
-      break if i >= @persona.max_skills
-      offset_x = 150 * (i/6).to_i
-      offset_y = line_height * i.divmod(6)[1]
-      draw_text(x + offset_x, y + offset_y, col_width, line_height, "-------")
-    end
   end
   
   alias persona_forget_pcm process_cursor_move
@@ -1804,7 +1882,6 @@ class Window_PersonaStatus < Window_Command
   end
   
   def process_forget
-    Audio.se_play(*Persona::PERSONA_EQUIP_SOUND)
     Input.update
     call_forget_handler
   end
@@ -1880,17 +1957,17 @@ class Window_PersonaStatus < Window_Command
 end
 
 class Scene_ForgetSkill < Scene_Base
-  alias persona_forget_start start
   def start
-    persona_forget_start
+    super
     create_windows
     create_background
   end
   
-  def start_without_bg
+  def start_without_background
+    create_main_viewport
     create_windows
   end
-  
+
   def create_windows
     create_main_viewport
     create_status_window
@@ -1899,7 +1976,7 @@ class Scene_ForgetSkill < Scene_Base
   end
   
   def create_status_window
-    @status_window = Window_PersonaStatus.new($game_party.menu_persona)
+    @status_window = Window_PersonaStatus.new($game_party.menu_persona, enable_cursor=true)
     @status_window.set_handler(:cancel,   method(:cancel_forget))
     @status_window.set_handler(:forget,   method(:skill_forget))
     @status_window.show.activate
@@ -1943,7 +2020,7 @@ class Scene_ForgetSkill < Scene_Base
   def create_message_window
     $game_message.clear
     @message_window = Window_Message.new
-    @choice = 0
+    @choice = -1
   end
   
   def wait_for_message
@@ -1957,12 +2034,7 @@ class Scene_ForgetSkill < Scene_Base
     persona = @status_window.persona
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
-    
-    $game_message.add("Are you sure you don't want #{persona.name}\nto learn #{new_skill.name}?")
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    show_message_with_choices(["Are you sure you don't want #{persona.name}\nto learn #{new_skill.name}?"], ["Yes", "No"], 2)
     wait_for_message
     index = @status_window.index
     if @choice == 0
@@ -1976,23 +2048,21 @@ class Scene_ForgetSkill < Scene_Base
       @status_window.activate
     end
   end
-  
+
   def skill_forget
     persona = @status_window.persona
     @status_window.deactivate
     skill = persona.skills[@status_window.index]
     new_skill = $data_skills[persona.extra_skills[0]]
-    $game_message.add("Are you sure you want #{persona.name} to forget\n#{skill.name} and learn #{new_skill.name}?")
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    show_message_with_choices(["Are you sure you want #{persona.name} to forget\n#{skill.name} and learn #{new_skill.name}?"], ["Yes", "No"], 2)
     wait_for_message
     index = @status_window.index
     if @choice == 0
+      Audio.se_play(*Persona::PERSONA_EQUIP_SOUND)
       persona.replace_skill(skill, new_skill)
       persona.extra_skills.delete_at(0)
-      @status_window.refresh
+      # Simple way to refresh window and skills
+      @status_window.persona = persona
       $game_message.add("#{persona.name} forgot #{skill.name} and learned\n#{new_skill.name}!")
       wait_for_message
       finish_new_skill
@@ -2000,7 +2070,7 @@ class Scene_ForgetSkill < Scene_Base
       @status_window.activate
     end
   end
-  
+
   def next_new_skill
     skill_id = $game_party.menu_persona.extra_skills[0]
     skill = $data_skills[skill_id]
@@ -2218,7 +2288,7 @@ class Window_ArcanaInfo < Window_Base
   def window_height
     Graphics.height * 0.35
   end
-  
+
   def refresh
     contents.clear
     return if @selected_arcana.nil?
@@ -3007,7 +3077,6 @@ class Game_System
     SceneManager.call(Scene_Fusion)
     Fiber.yield
   end
-  
 end
 
 class Window_ExtraExp < Window_Base
@@ -3050,20 +3119,27 @@ class Window_ExtraExp < Window_Base
 end
 
 class Window_FusionParents < Window_Personas
-  attr_reader :result_data, :fusion_results_data
+  attr_reader :result_data, :fusion_results_data, :selected_personas
   def initialize(fuse_count)
     @selected_personas = []
     @fuse_count = fuse_count
     @fusion_results_data = []
     @result_data = nil
-    @personas = available_personas
-    super($game_party.menu_actor)
+    super($game_party.menu_actor, full_screen=false, lazy_load=true)
     self.visible = true
     select_last
   end
   
-  def selected_personas
-    @selected_personas
+  def personas
+    actors = $game_party.members.select{ |a| Persona::CAN_FUSE_ACTORS_PERSONAS.include?(a.id) }
+    personas = []
+    for actor in actors
+      actors_personas = $game_party.actors_personas(actor.id)
+      # Don't include the exclusive persona if it's not allowed
+      next if !actor.has_exclusive_persona? && !Persona::CAN_FUSE_EXCLUSIVE_PERSONAS 
+      personas.concat(actors_personas)
+    end
+    return personas
   end
   
   def pop_persona
@@ -3079,7 +3155,6 @@ class Window_FusionParents < Window_Personas
     @selected_personas = []
     @fusion_results_data = []
     @result_data = nil
-    @personas = available_personas
     refresh
   end
   
@@ -3092,7 +3167,7 @@ class Window_FusionParents < Window_Personas
       return fusion_data[:conditions].empty? ? true : $game_personas.fusion_conditions_met?(fusion_data)
     end
 
-    for last_parent in @personas
+    for last_parent in self.personas
       if @selected_personas.include?(last_parent)
         @fusion_results_data.push(nil) 
       else
@@ -3125,7 +3200,7 @@ class Window_FusionParents < Window_Personas
   
   def process_status
     Sound.play_ok
-    $game_party.menu_persona = @personas[index]
+    $game_party.menu_persona = self.personas[index]
     call_status_handler
   end
   
@@ -3137,24 +3212,11 @@ class Window_FusionParents < Window_Personas
     handle?(:status)
   end
   
-  def available_personas
-    actors = $game_party.members.select{ |a| Persona::CAN_FUSE_ACTORS_PERSONAS.include?(a.id) }
-    personas = []
-    for actor in actors
-      actors_personas = $game_party.actors_personas(actor.id)
-      # Don't include the exclusive persona if it's not allowed
-      next if !actor.has_exclusive_persona? && !Persona::CAN_FUSE_EXCLUSIVE_PERSONAS 
-      personas.concat(actors_personas)
-    end
-    return personas
-  end
-  
   def process_cancel
     Sound.play_cancel
     Input.update
     pop_persona
     call_cancel_handler
-    refresh_children
     refresh
   end
   
@@ -3174,9 +3236,13 @@ class Window_FusionParents < Window_Personas
     refresh_children
     super
   end
-  
+
   def process_ok
-    persona = @personas[index]
+    if self.personas.size == 0
+      Sound.play_cancel
+      return
+    end
+    persona = self.personas[index]
     if fusion_selection_valid?(index)
       @selected_personas.push(persona)
       Sound.play_ok
@@ -3199,13 +3265,13 @@ class Window_FusionParents < Window_Personas
     handle?(:fuse)
   end
   
-  def is_persona_enabled_at?(index)
-    return Persona::CAN_FUSE_EXCLUSIVE_PERSONAS if !@personas[index].current_user.nil? && @personas[index].current_user.has_exclusive_persona?
+  def command_enabled?(index)
+    return Persona::CAN_FUSE_EXCLUSIVE_PERSONAS if !self.personas[index].current_user.nil? && self.personas[index].current_user.has_exclusive_persona?
     return fusion_selection_valid?(index)
   end
 
   def fusion_selection_valid?(index)
-    return false if !@selected_personas.index(@personas[index]).nil?
+    return false if !@selected_personas.index(self.personas[index]).nil?
     return true if @selected_personas.empty? || @selected_personas.length < @fuse_count - 1
     # as long as a child can be created with this one and 
     # the result does not exist in the party
@@ -3215,7 +3281,7 @@ class Window_FusionParents < Window_Personas
   end
 
   def draw_item_background(index)
-    if !@selected_personas.index(@personas[index]).nil?
+    if !@selected_personas.index(self.personas[index]).nil?
       color = pending_color
       color.alpha = 100
       contents.fill_rect(item_rect(index), color)
@@ -3238,33 +3304,35 @@ class Window_FusionChildren < Window_Personas
   include Persona
   
   def initialize
-    super($game_party.menu_actor)
     @actor = nil
     @fusion_results_data = [nil]
-    @personas = []
+    super($game_party.menu_actor, full_screen=false, lazy_load=true)
     self.x = Graphics.width / 2
     self.visible = true
     self.arrows_visible = false
     deactivate
     unselect
-    refresh
+  end
+
+  def personas
+    @fusion_results_data.map{|f| f.nil? ? nil : $game_personas[f[:result]]}
   end
 
   def process_handling
     return
   end
   
-  def update_cursor
-    return
-  end
-  
   def top_row=(row)
     super(row)
+    draw_around_current_index
   end
 
-  def refresh
-    contents.clear
-    draw_all_items
+  def update
+    super
+  end
+
+  def update_cursor
+    return
   end
   
   def actor=(actor)
@@ -3273,20 +3341,15 @@ class Window_FusionChildren < Window_Personas
 
   def fusion_results_data=(fusion_results_data)
     @fusion_results_data = fusion_results_data
-    @personas = @fusion_results_data.map{|f| f.nil? ? nil : $game_personas[f[:result]]}
     refresh
   end
   
-  def is_persona_enabled_at?(index)
+  def command_enabled?(index)
     return true
   end
 
-  def draw_all_items
-    item_max.times {|i| draw_item(i) }
-  end
-  
   def draw_item(index)
-    persona = @personas[index]
+    persona = self.personas[index]
     return if persona.nil?
     super(index)
   end
@@ -3308,7 +3371,7 @@ end
 
 class Window_PersonaStatus < Window_Command 
   alias persona_fuse_init initialize
-  def initialize(persona)
+  def initialize(persona, enable_cursor=false)
     persona_fuse_init(persona)
     @bonus_exp = 0
     @start_exp = false
@@ -3413,8 +3476,6 @@ class Scene_Fusion < Scene_Base
     @fuse_window.select_last
     # called when a new persona is selected
     @fuse_window.set_handler(:ok, method(:on_process_ok))
-    # called when there are no selected personas and leaves the scene
-    # @fuse_window.set_handler(:return, method(:return_scene))
     # called when there are selected personas and removes the last chosen one
     @fuse_window.set_handler(:cancel, method(:on_process_cancel))
     # shows the selected persona's status
@@ -3424,8 +3485,6 @@ class Scene_Fusion < Scene_Base
   
   def create_status_window
     @status_window = Window_PersonaStatus.new($game_party.menu_persona)
-    # called when confirming a fusion
-    @status_window.set_handler(:ok,   method(:ask_fusion_confirmation))
     # called when viewing a persona's status and returns to fuse windows
     @status_window.set_handler(:cancel,   method(:return_status))
     @status_window.deactivate.close.unselect
@@ -3447,11 +3506,13 @@ class Scene_Fusion < Scene_Base
   
   def on_process_ok
     if @fuse_window.selected_personas.size < $game_system.fuse_count
+      @exit_on_next_cancel = false
       @results_window.fusion_results_data = @fuse_window.fusion_results_data
     elsif @fuse_window.selected_personas.size == $game_system.fuse_count
+      @exit_on_next_cancel = false
       show_fusion_result
+      ask_fusion_confirmation
     end
-    @exit_on_next_cancel = false
   end
 
   def on_process_cancel
@@ -3481,7 +3542,7 @@ class Scene_Fusion < Scene_Base
     resulting_persona_id = @fuse_window.result_data[:result]
     resulting_persona = $game_personas[resulting_persona_id]
     @status_window.persona = resulting_persona
-    @status_window.show.activate.show.enable_ok
+    @status_window.show.activate.enable_ok
     @status_window.open
     @fuse_window.deactivate
     
@@ -3518,6 +3579,7 @@ class Scene_Fusion < Scene_Base
   
   def update
     super
+    @results_window.index = @fuse_window.index
     @results_window.top_row = @fuse_window.top_row
   end
 
@@ -3542,7 +3604,7 @@ class Scene_Fusion < Scene_Base
     first_user = parents_users.empty? ? nil : parents_users[0]
     parents_str = parents.collect{|p| p.name }.join(" + ")
     fusion_data = @fuse_window.result_data
-
+    
     $game_message.add("Fused #{parents_str} into\n#{@status_window.persona.name}!")
     wait_for_message
     
@@ -3560,9 +3622,12 @@ class Scene_Fusion < Scene_Base
     @extra_exp_window.close
     @status_window.close.deactivate.unselect
     @results_window.fusion_results_data = []
+    @fuse_window.selected_personas.clear
     @exit_on_next_cancel = true
     @fuse_window.reset
     @choice = -1
+    
+    run_skill_forget_if_needed(@status_window.persona)
   end
 
   def on_fuse_deny
@@ -3572,27 +3637,43 @@ class Scene_Fusion < Scene_Base
     @choice = -1
     @fuse_window.pop_persona
     @fuse_window.activate
-    @fuse_window.refresh
+    @results_window.fusion_results_data = @fuse_window.fusion_results_data
   end
 
+  def run_skill_forget_if_needed(persona)
+    if persona.extra_skills.size > 0
+      @status_window.deactivate.close
+      @extra_exp_window.close
+      while @status_window.openness > 0
+        @status_window.update 
+        @extra_exp_window.update
+      end
+      $game_party.menu_persona = persona
+      SceneManager.call(Scene_ForgetSkill)
+    end
+  end
+  
   def ask_fusion_confirmation
-    return if @choice == 0 # return if already accepted fusion
+    return if $game_message.choice_proc == 0 # return if already accepted fusion
     return if @fuse_window.result_data.nil?
+    @fuse_window.deactivate
+    @extra_exp_window.open
     resulting_persona_id = @fuse_window.result_data[:result]
     resulting_persona = $game_personas[resulting_persona_id]
-    $game_message.add("Are you sure you want to create the #{resulting_persona.name}")
-    $game_message.add("#{Persona::PERSONA_MENU_NAME.capitalize}")
-    $game_message.choices.push("Yes")
-    $game_message.choices.push("No")
-    $game_message.choice_cancel_type = 2
-    $game_message.choice_proc = Proc.new {|n| @choice = n }
+    show_message_with_choices(
+      [
+        "Are you sure you want to create the #{resulting_persona.name}",
+        "#{Persona::PERSONA_MENU_NAME.capitalize}"
+      ],
+      ["Yes", "No"],
+      2
+    )
     wait_for_message
     if @choice == 0
       wait_for_exp
       on_fuse_confirm
     else
       on_fuse_deny
-      return
     end
   end
 end
@@ -3683,16 +3764,16 @@ module BattleManager
       Graphics.transition(30)
       persona_shuffle_pv
     end
-      
+    
     alias persona_shuffle_ge gain_exp
     def gain_exp
       persona_shuffle_ge
       $game_party.battle_personas.each do |m|
+        $game_party.menu_persona = m
         next if m.extra_skills.empty?
         $game_party.menu_persona = m
         SceneManager.call(Scene_ForgetSkill)
-        SceneManager.scene.start_without_bg
-        SceneManager.scene.show_message
+        SceneManager.scene.start_without_background
         SceneManager.scene.update while SceneManager.scene_is?(Scene_ForgetSkill)
       end
     end
@@ -3826,7 +3907,7 @@ class Game_System
     # remove all bank/penalty
     cards = cards.select{|c| ["Blank", "Penalty"].index(c).nil? }
 
-    if !Persona::ALLOW_DUPLICATES
+    if !Persona::SHUFFLE_ALLOW_DUPLICATES
       cards = cards.uniq
     end
     

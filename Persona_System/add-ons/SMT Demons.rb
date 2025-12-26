@@ -31,129 +31,131 @@
 #===============================================================================
 
 class Window_ActorCommand < Window_Command
-    # Remove commands from actor command window
-    def add_persona_command
-    end
+  # Remove commands from actor command window
+  def add_persona_command
+  end
 
-    def add_persona_skills_command
-    end
+  def add_persona_skills_command
+  end
 end
 
 class Window_MenuCommand < Window_Command
-    # Remove persona command from menu command window
-    def add_persona_command
-    end
+  # Remove persona command from menu command window
+  def add_persona_command
+  end
 end
 
 class Game_Party < Game_Unit
-    def add_persona_by_id(persona_id, equip=false)
-        # inform the script's user about the mistake
-        if $game_personas[persona_id].nil? || !$game_personas[persona_id].is_persona?
-            msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id}) or one that is not a persona")
-            return
-        end
-        return if @personas.collect{|p| p.id}.include?(persona_id)
-        
-        add_actor(persona_id)
-        
-        $game_player.refresh
-        $game_map.need_refresh = true
+  def battle_personas
+    # Return all personas in party
+    battle_members.select{|m| m.is_persona? }
+  end
+
+  def add_persona_by_id(persona_id, equip=false)
+    if $game_personas[persona_id].nil? || !$game_personas[persona_id].is_persona?
+      msgbox("There was an attempt to add a persona with an invalid ID (#{persona_id}) or one that is not a persona")
+      return
     end
+    # Basically the same, without the auto equip
+    persona = $game_personas[persona_id]
+    return if persona.nil?
+    return if @personas.include?(persona)
     
-    alias smt_add_actor add_actor
-    def add_actor(actor_id)
-        smt_add_actor(actor_id)
-        if $data_actors[actor_id].is_persona?
-            @personas.push($game_personas[actor_id])
-        end
-    end
+    @personas.push(persona)
+
+    $game_player.refresh
+    $game_map.need_refresh = true
+  end
+  
+  alias smt_add_actor add_actor
+  def add_actor(actor_id)
+    smt_add_actor(actor_id)
+    add_persona_by_id(actor_id) if $data_actors[actor_id].is_persona?
+  end
+
+  alias smt_remove_actor remove_actor
+  def remove_actor(actor_id)
+    smt_remove_actor(actor_id)
+    remove_persona_by_id(actor_id) if $data_actors[actor_id].is_persona?
+  end
 end
 
 class Game_Personas
-    # Redirect to Game_Actors
-    def [](actor_id)
-        $game_actors[actor_id]
-    end
+  # Redirect to Game_Actors
+  def [](actor_id)
+    $game_actors[actor_id]
+  end
 end
 
 class Window_PersonaStatus < Window_Command
-    # Patch to work with Scene_Status that expects an actor= method
-    def actor=(actor)
-        return if @actor == actor
-        @persona = actor
-        refresh
-    end
+  # Patch to work with Scene_Status that expects an actor= method
+  def actor=(actor)
+    @persona = actor
+    clear_command_list
+    make_command_list
+    refresh
+  end
 end
 
 class Scene_Status < Scene_MenuBase
-    alias smt_start start
-    def start
-        smt_start
-        create_persona_status_window
-    end
+  alias smt_start start
+  def start
+    smt_start
+    create_persona_status_window
+  end
 
-    def create_persona_status_window
-        # Replace default status window with persona status window
-        @status_window = Window_PersonaStatus.new(@actor)
-        @status_window.set_handler(:cancel,   method(:return_scene))
-        @status_window.set_handler(:pagedown, method(:next_actor))
-        @status_window.set_handler(:pageup,   method(:prev_actor))
-        @status_window.show
-        @status_window.activate
-    end
+  def create_persona_status_window
+    # Replace default status window with persona status window
+    @status_window = Window_PersonaStatus.new(@actor)
+    @status_window.set_handler(:cancel,   method(:return_scene))
+    @status_window.set_handler(:pagedown, method(:next_actor))
+    @status_window.set_handler(:pageup,   method(:prev_actor))
+    @status_window.show
+    @status_window.activate
+  end
 end
 
 class Scene_Battle < Scene_Base
-    # Remove persona commands to actor command window
-    def add_persona_commands_to_actor_command_window
-    end  
+  # Remove persona commands to actor command window
+  def add_persona_commands_to_actor_command_window
+  end  
 end
 
-class Game_Actor < Game_Battler
-    # Same level up process for all actors
-  def level_up
-    @level += 1
-    self.class.learnings.each do |learning|
-        @extra_skills.push(learning.skill_id) if learning.level == @level
-    end
-  end
-  
+class Game_Actor < Game_Battler  
   def index
     # Revert to original index method
     $game_party.members.index(self)
   end
-  
 end
 
 class Scene_Menu < Scene_MenuBase
-    # Remove persona command from menu
-    def add_persona_commands_to_command_window
-    end
+  # Remove persona command from menu
+  def add_persona_commands_to_command_window
+  end
 end
 
 class Window_MenuCommand < Window_Command
-    # Remove arcana command from menu command window
-    def add_arcana_command
-    end
+  # Remove arcana command from menu command window
+  def add_arcana_command
+  end
 end
 
 class Scene_Menu < Scene_MenuBase
-    # Remove social links command from menu
-    def add_social_links_command
-    end
+  # Remove social links command from menu
+  def add_social_links_command
+  end
 end
 
 class Window_FusionParents < Window_Personas
-  def available_personas
+  def personas
     # Return all personas in party
     $game_party.personas
   end
   
-  def is_persona_enabled_at?(index)
+  def command_enabled?(index)
     # skip checking for options from the original system
     return fusion_selection_valid?(index)
   end
-
 end
 
 class Scene_Fusion < Scene_Base
@@ -167,17 +169,27 @@ class Scene_Fusion < Scene_Base
     wait_for_message
     
     for persona in parents
+      # Remove from party's personas
       $game_party.remove_persona_by_id(persona.id)
+      # Remove as an actor from party
+      $game_party.remove_actor(persona.id)
     end
     
-    $game_party.add_persona_by_id(@status_window.persona.id)
+    $game_party.add_actor(@status_window.persona.id)
+    if Persona::REMOVE_CONDITION_ITEM_ON_FUSE
+      item_id = fusion_data[:conditions][:item_id]
+      $game_party.lose_item($data_items[item_id], 1) if !item_id.nil?
+    end
     
     @extra_exp_window.close
     @status_window.close.deactivate.unselect
     @results_window.fusion_results_data = []
+    @fuse_window.selected_personas.clear
     @exit_on_next_cancel = true
     @fuse_window.reset
     @choice = -1
+    
+    run_skill_forget_if_needed(@status_window.persona)
   end
 end
 

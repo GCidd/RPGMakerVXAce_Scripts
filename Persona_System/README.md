@@ -122,6 +122,20 @@ Personas belong to different Arcanas, each representing a thematic category with
 - Detailed system explanations
 - Customizable option settings for each sub-system
 
+### Compatibility with other scripts
+
+#### [Hime's Large Choices](https://himeworks.com/2012/12/large-choices-built-in-multiple-choices/)
+
+For the script to work with Large Choices, you need to make a very small change to the script.
+Specifically, on line 115
+```diff
+...
+-   return if TH::Large_Choices::Manual_Combine && !@combine_choices
++   return if TH::Large_Choices::Manual_Combine && !@combine_choices || @list.nil?
+..
+```
+
+
 ## Credits
 
 * **demifiend700** - [Original script requester](https://forums.rpgmakerweb.com/index.php?threads/persona-system-for-vx-ace-big-script-willing-to-trade.92260/)
