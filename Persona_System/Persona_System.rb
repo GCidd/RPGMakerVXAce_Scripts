@@ -3378,6 +3378,7 @@ class Window_PersonaStatus < Window_Command
     @step = 0
     @ok_enabled = false
     @exp_diffuse_duration_frames = 60
+    @skip_exp = false
   end
   
   def disable_ok
@@ -3432,10 +3433,19 @@ class Window_PersonaStatus < Window_Command
     @start_exp = true
   end
   
+  def skip_exp
+    @skip_exp = true
+  end
+
   def update_bonus_exp
     if @start_exp
-      @bonus_exp = [@bonus_exp-@step, 0].max
-      new_exp = @persona.exp + ([@step, @bonus_exp].min * @persona.final_exp_rate).to_i
+      if @skip_exp
+        new_exp = (@persona.exp + @bonus_exp * @persona.final_exp_rate).to_i
+        @bonus_exp = 0
+      else
+        @bonus_exp = [@bonus_exp-@step, 0].max
+        new_exp = @persona.exp + ([@step, @bonus_exp].min * @persona.final_exp_rate).to_i
+      end
       # use change_exp to avoid exp rate to be taken into account
       @persona.change_exp(new_exp, false)
       @start_exp = @bonus_exp != 0
@@ -3587,10 +3597,15 @@ class Scene_Fusion < Scene_Base
     @status_window.start_exp
     while !@status_window.done_exp
       @extra_exp_window.exp= @status_window.bonus_exp
-      
+
       @extra_exp_window.update
       @status_window.update
       Graphics.update
+      Input.update
+
+      if Input.trigger?(:C) || Input.trigger?(:B)
+        @status_window.skip_exp
+      end
     end
     @extra_exp_window.exp = @status_window.bonus_exp
     
