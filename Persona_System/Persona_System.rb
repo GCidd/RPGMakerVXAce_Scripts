@@ -3091,41 +3091,34 @@ class Game_System
 end
 
 class Window_ExtraExp < Window_Base
-  def initialize(x, y)
+  def initialize
     height = line_height * 2
-    super(x, y, 180, height)
+    super(0, 0, 0, height)
     @current_exp = 0
     @exp_changed = false
+    @original_x = nil
     self.openness = 0
   end
   
-  def set_width(txt)
+  def set_bonus_exp(bonus_exp)
     contents.clear
-    if text_size(txt).width > self.width - standard_padding * 2
-      self.width = text_size(txt).width + standard_padding * 2
-      create_contents
-    end
-  end
-  
-  def text=(txt)
-    draw_text(0, 0, self.width - standard_padding, line_height, txt)
+    create_contents
+    text = "Bonus EXP: #{bonus_exp}"
+    new_width = text_size(text).width + standard_padding * 2
+    draw_text(0, 0, new_width, line_height, text)
+    @original_x ||= Graphics.width - new_width
+    self.move(@original_x, self.height, new_width, self.height)
   end
   
   def exp=(exp)
     @current_exp = exp
     @exp_changed = true
+    set_bonus_exp(@current_exp)
   end
   
   def update
     super
-    update_exp if @exp_changed
-  end
-  
-  def update_exp
-    contents.clear
-    draw_text(0, 0, self.width - standard_padding, line_height, "Bonus EXP:")
-    x = text_size("Bonus EXP:").width
-    draw_text(x - 10, 0, self.width - standard_padding - x, line_height, @current_exp, 2)
+    set_bonus_exp(@current_exp) if @exp_changed
   end
 end
 
@@ -3484,7 +3477,7 @@ class Scene_Fusion < Scene_Base
   end
   
   def create_extra_exp_window
-    @extra_exp_window = Window_ExtraExp.new(350, 24 * 5)
+    @extra_exp_window = Window_ExtraExp.new
   end
   
   def create_message_window
@@ -3570,10 +3563,7 @@ class Scene_Fusion < Scene_Base
     
     bonus_exp = Persona.FUSION_EXP_CALC(resulting_persona).to_i
     @status_window.bonus_exp = bonus_exp
-    txt = "Bonus EXP:"
-    @extra_exp_window.text = txt
     @extra_exp_window.exp = bonus_exp
-    @extra_exp_window.set_width("Bonus EXP:#{bonus_exp}")
     @extra_exp_window.show
   end
   
