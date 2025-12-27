@@ -1326,20 +1326,16 @@ class Window_PersonaStatus < Window_Command
     # offset is added only if there is an icon to draw
     # icon is usually there when there is a skill name
     if !@list[index][:ext].nil?
-      rect.x += 20
+      rect.x += 24
       rect.width -= standard_padding
     end
     rect
   end
 
-  def draw_all_items
-    item_max.times {|i| draw_item(i) }
-  end
-
   def draw_item(index)
     item = @list[index]
     return if item.nil?
-    icon_index = (item.nil? || item[:ext].nil?) ? nil : item[:ext][:icon_index] 
+    icon_index = (item.nil? || item[:ext].nil?) ? nil : item[:ext][:icon_index]
     rect = item_rect(index)
     draw_icon(icon_index, rect.x, rect.y) if !icon_index.nil?
     change_color(normal_color, command_enabled?(index))
@@ -1856,17 +1852,44 @@ class Game_Actor < Game_Battler
 end
 
 class Window_NewSkill < Window_Base
-  def initialize(x, y)
+  def initialize(x, y, skill_id)
+    @skill = $data_skills[skill_id]
+    width = text_with_icon_width + standard_padding * 2
     height = line_height * 2
-    super(x, y, 200, height)
+    super(x, y, width, height)
     self.openness = 0
+    self.arrows_visible = false
+    draw_new_skill_message
   end
-  
-  def text=(txt)
+
+  def new_skill_str
+    "New skill:"
+  end
+
+  def text_with_icon_width
+    bitmap = Bitmap.new(1, 1)
+    bitmap.text_size(self.new_skill_str).width + 24 + bitmap.text_size(@skill.name).width
+  end
+
+  def draw_new_skill_message
     contents.clear
-    self.width = text_size(txt).width + standard_padding * 2
     create_contents
-    draw_text(0, 0, self.width - standard_padding, line_height, txt)
+
+    new_skill_width = text_size(self.new_skill_str).width
+    draw_text(0, 0, self.width, line_height, self.new_skill_str)
+    
+    draw_icon(@skill.icon_index, new_skill_width, 0, true)
+    
+    skill_name_x = new_skill_width + 24
+    skill_name_width = self.width - skill_name_x
+    draw_text(skill_name_x, 0, skill_name_width - standard_padding, line_height, @skill.name)
+  end
+
+  def skill_id=(skill_id)
+    @skill = $data_skills[skill_id]
+    width = text_with_icon_width + standard_padding * 2
+    self.move(self.x, self.y, width, self.height)
+    draw_new_skill_message
   end
 end
 
@@ -2020,12 +2043,9 @@ class Scene_ForgetSkill < Scene_Base
   end
   
   def create_new_skill_window
-    @new_skill_window = Window_NewSkill.new(150, 24 * 5)
-    @new_skill_window.open
     skill_id = $game_party.menu_persona.extra_skills[0]
-    skill = $data_skills[skill_id]
-    txt = "New skill: " + skill.name
-    @new_skill_window.text= txt
+    @new_skill_window = Window_NewSkill.new(150, 24 * 5, skill_id)
+    @new_skill_window.open
   end
   
   def create_message_window
@@ -2084,9 +2104,7 @@ class Scene_ForgetSkill < Scene_Base
 
   def next_new_skill
     skill_id = $game_party.menu_persona.extra_skills[0]
-    skill = $data_skills[skill_id]
-    txt = "New skill: " + skill.name
-    @new_skill_window.text= txt
+    @new_skill_window.skill_id = skill_id
     show_message
   end
   
