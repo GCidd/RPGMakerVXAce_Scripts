@@ -1167,11 +1167,15 @@ class Window_PersonaStatus < Window_Command
   
   def persona=(persona)
     @persona = persona
-    clear_command_list
-    make_command_list
+    refresh_commands
     refresh
   end
   
+  def refresh_commands
+    clear_command_list
+    make_command_list
+  end
+
   def process_handling
     return unless open? && active
     return process_cancel   if cancel_enabled?    && Input.trigger?(:B)
@@ -1841,7 +1845,7 @@ class Game_Actor < Game_Battler
 
   alias persona_forget_ce change_exp
   def change_exp(exp, show)
-    persona_forget_ce(exp, show)
+    persona_forget_ce(exp, Persona::SHOW_SKILL_LEARNED_MESSAGE)
     refresh
   end
   
@@ -1897,10 +1901,7 @@ class Window_PersonaStatus < Window_Command
   alias persona_forget_init initialize
   def initialize(persona, enable_cursor=false)
     persona_forget_init(persona)
-    if enable_cursor
-      clear_command_list
-      make_command_list
-    end
+    refresh_commands if enable_cursor
     select_last
   end
   
@@ -3571,6 +3572,19 @@ class Scene_Fusion < Scene_Base
     @status_window.activate
   end
   
+  def wait_for_message_no_update
+    @status_window.deactivate.disable_ok
+    @message_window.open
+    @message_window.activate
+    @message_window.update
+    while $game_message.visible
+      Graphics.update
+      Input.update
+      @message_window.update
+    end
+    @status_window.activate
+  end
+
   def show_fusion_result
     resulting_persona_id = @fuse_window.result_data[:result]
     resulting_persona = $game_personas[resulting_persona_id]
@@ -3616,6 +3630,7 @@ class Scene_Fusion < Scene_Base
   def wait_for_exp
     @status_window.start_exp
     while !@status_window.done_exp
+      last_skill_count = @status_window.persona.skills.size
       @extra_exp_window.exp= @status_window.bonus_exp
 
       @extra_exp_window.update
@@ -3623,9 +3638,13 @@ class Scene_Fusion < Scene_Base
       Graphics.update
       Input.update
 
-      if Input.trigger?(:C) || Input.trigger?(:B)
+      if (Input.trigger?(:C) || Input.trigger?(:B))
         @status_window.skip_exp
       end
+
+      @status_window.refresh_commands if last_skill_count != @status_window.persona.skills.size
+      
+      wait_for_message_no_update
     end
     @extra_exp_window.exp = @status_window.bonus_exp
     
