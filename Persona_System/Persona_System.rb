@@ -1243,6 +1243,8 @@ class Window_PersonaStatus < Window_Command
   
   def draw_block3(y)
     draw_parameters(10, y)
+    # draw vertical line separator between params and skills
+    contents.fill_rect(100 - standard_padding, y, 2, line_height * 6, line_color)
     draw_all_items
   end
   
@@ -1310,12 +1312,28 @@ class Window_PersonaStatus < Window_Command
     draw_text(x, y, 180, line_height, skill_name)
   end
   
+  def item_rect(index)
+    rect = Rect.new
+    rect.width = item_width
+    rect.height = item_height
+    rect.x = ((index/6).to_i * item_width) + 100
+    rect.y = (item_height * index.divmod(6)[1]) + line_height * 7
+    rect
+  end
+  
   def item_rect_for_text(index)
-    rect = super(index)
+    rect = item_rect(index)
     # offset is added only if there is an icon to draw
     # icon is usually there when there is a skill name
-    rect.x += 24 if !@list[index][:ext].nil?
+    if !@list[index][:ext].nil?
+      rect.x += 20
+      rect.width -= standard_padding
+    end
     rect
+  end
+
+  def draw_all_items
+    item_max.times {|i| draw_item(i) }
   end
 
   def draw_item(index)
@@ -1749,7 +1767,9 @@ end
 #-------------------------------------------------------------------------------
 class RPG::Actor < RPG::BaseItem
   def max_skills
-    note =~ /<Max skills: (\d+)>/ ? $1.to_i : Persona::DEFAULT_MAX_PERSONA_SKILLS
+    max_skills = note =~ /<Max skills: (\d+)>/ ? $1.to_i : Persona::DEFAULT_MAX_PERSONA_SKILLS
+    # Force max skills to be at most 18, otherwise they won't fit in the status window
+    [max_skills, 18].min
   end
 end
 
@@ -1895,28 +1915,19 @@ class Window_PersonaStatus < Window_Command
   end
   
   def item_width
-    ((self.width - 100)/3).to_i
+    ((self.width - 100)/3).to_i - standard_padding
   end
   
   def row_max
-    [(item_max + col_max - 1) / item_max, 1].max
-  end
-  
-  def item_max
-    @persona ? @persona.max_skills : 1
-  end
-  
-  def item_rect(index)
-    rect = Rect.new
-    rect.width = item_width
-    rect.height = item_height
-    rect.x = ((index/6).to_i * item_width) + 100
-    rect.y = (item_height * index.divmod(6)[1]) + line_height * 7
-    rect
+    6
   end
   
   def col_max
-    3
+    4
+  end
+
+  def item_max
+    [row_max * col_max, persona.max_skills].min
   end
   
   def select_last
@@ -1928,13 +1939,13 @@ class Window_PersonaStatus < Window_Command
   end  
   
   def cursor_down(wrap = false)
-    if col_max >= 2 && (index < item_max - 1 || (wrap && horizontal?))
+    if (index < item_max - 1 || (wrap && horizontal?))
       select((index + 1) % item_max)
     end
   end
   
   def cursor_up(wrap = false)
-    if col_max >= 2 && (index > 0 || (wrap && horizontal?))
+    if (index > 0 || (wrap && horizontal?))
       select((index - 1 + item_max) % item_max)
     end
   end
@@ -3412,6 +3423,7 @@ class Window_PersonaStatus < Window_Command
   
   def bonus_exp=(exp)
     @bonus_exp = exp
+    @skip_exp = false
     @step = @bonus_exp/@exp_diffuse_duration_frames
   end
   
