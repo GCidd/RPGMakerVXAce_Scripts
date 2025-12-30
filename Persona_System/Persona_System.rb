@@ -1588,6 +1588,8 @@ class Scene_Personas < Scene_Base
   def wait_for_message
     @message_window.update
     update_for_wait while $game_message.busy?
+    $game_message.clear
+    @message_window.new_page
   end
   
   def update_for_wait
@@ -1784,6 +1786,7 @@ class Game_Actor < Game_Battler
     @max_skills = actor.max_skills
     @@max_skills_by_persona[self.id] = @@max_skills_by_persona[self.id] || @max_skills
     @extra_skills = []
+    @learned_skill_messages = []
   end
   
   def increase_max_skills_allowed(by=1)
@@ -1845,13 +1848,41 @@ class Game_Actor < Game_Battler
 
   alias persona_forget_ce change_exp
   def change_exp(exp, show)
-    persona_forget_ce(exp, Persona::SHOW_SKILL_LEARNED_MESSAGE)
+    persona_forget_ce(exp, Persona::SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION)
     refresh
   end
   
   def replace_skill(old_skill, new_skill)
     index = @skills.index(old_skill.id)
     @skills[index] = new_skill.id
+  end
+
+  def pop_new_skills_message
+    if @learned_skill_messages.size > 0
+      $game_message.new_page
+      @learned_skill_messages.each do |msg|
+        $game_message.add(msg)
+      end
+      @learned_skill_messages.clear
+    end
+  end
+
+  alias persona_dlu display_level_up
+  def display_level_up(new_skills)
+    if Persona::SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION && SceneManager.scene_is?(Scene_Fusion)
+      if Persona::AGGREGATE_LEARNED_SKILLS_SINGLE_MESSAGE
+        new_skills.each do |skill|
+          @learned_skill_messages << sprintf(Vocab::ObtainSkill, skill.name)
+        end
+      else
+        $game_message.new_page
+        new_skills.each do |skill|
+          $game_message.add(sprintf(Vocab::ObtainSkill, skill.name))
+        end
+      end
+    else
+      persona_dlu(new_skills)
+    end
   end
 end
 
@@ -2060,6 +2091,8 @@ class Scene_ForgetSkill < Scene_Base
     @message_window.activate
     @message_window.update
     update_basic while $game_message.visible
+    $game_message.clear
+    @message_window.new_page
   end
   
   def cancel_forget
@@ -3110,6 +3143,8 @@ class Game_System
 end
 
 class Window_ExtraExp < Window_Base
+  attr_reader :current_exp
+
   def initialize
     height = line_height * 2
     super(0, 0, 0, height)
@@ -3397,7 +3432,7 @@ class Window_PersonaStatus < Window_Command
   def initialize(persona, enable_cursor=false)
     persona_fuse_init(persona)
     @bonus_exp = 0
-    @start_exp = false
+    @gaining_bonus_exp = false
     @step = 0
     @ok_enabled = false
     @exp_diffuse_duration_frames = 60
@@ -3443,18 +3478,14 @@ class Window_PersonaStatus < Window_Command
     @bonus_exp
   end
   
-  def done_exp
-    @bonus_exp == 0
-  end
-  
   alias persona_fuse_u update
   def update
     update_bonus_exp
     persona_fuse_u
   end
   
-  def start_exp
-    @start_exp = true
+  def start_gaining_bonus_exp
+    @gaining_bonus_exp = true
   end
   
   def skip_exp
@@ -3462,7 +3493,7 @@ class Window_PersonaStatus < Window_Command
   end
 
   def update_bonus_exp
-    if @start_exp
+    if @gaining_bonus_exp
       if @skip_exp
         new_exp = (@persona.exp + @bonus_exp * @persona.final_exp_rate).to_i
         @bonus_exp = 0
@@ -3472,7 +3503,7 @@ class Window_PersonaStatus < Window_Command
       end
       # use change_exp to avoid exp rate to be taken into account
       @persona.change_exp(new_exp, false)
-      @start_exp = @bonus_exp != 0
+      @gaining_bonus_exp = @bonus_exp != 0
       refresh
     end
   end
@@ -3565,23 +3596,23 @@ class Scene_Fusion < Scene_Base
   
   def wait_for_message
     @status_window.deactivate.disable_ok
-    @message_window.open
-    @message_window.activate
     @message_window.update
+    @message_window.open.activate
     update_basic while $game_message.visible
+    @message_window.deactivate.close
     @status_window.activate
   end
   
   def wait_for_message_no_update
     @status_window.deactivate.disable_ok
-    @message_window.open
-    @message_window.activate
     @message_window.update
+    @message_window.open.activate
     while $game_message.visible
       Graphics.update
       Input.update
       @message_window.update
     end
+    @message_window.deactivate.close
     @status_window.activate
   end
 
@@ -3628,28 +3659,32 @@ class Scene_Fusion < Scene_Base
   end
 
   def wait_for_exp
-    @status_window.start_exp
-    while !@status_window.done_exp
+    @status_window.start_gaining_bonus_exp
+    while @extra_exp_window.current_exp != 0
       last_skill_count = @status_window.persona.skills.size
-      @extra_exp_window.exp= @status_window.bonus_exp
+      @extra_exp_window.exp = @status_window.bonus_exp
 
-      @extra_exp_window.update
       @status_window.update
       Graphics.update
       Input.update
 
       if (Input.trigger?(:C) || Input.trigger?(:B))
         @status_window.skip_exp
+        @status_window.update
+        @extra_exp_window.exp = @status_window.bonus_exp
+        @extra_exp_window.update
       end
-
-      @status_window.refresh_commands if last_skill_count != @status_window.persona.skills.size
       
+      if last_skill_count != @status_window.persona.skills.size
+        @status_window.refresh_commands
+        @status_window.refresh
+      end
       wait_for_message_no_update
     end
-    @extra_exp_window.exp = @status_window.bonus_exp
+    wait_for_message_no_update
     
-    @extra_exp_window.update
-    @status_window.update
+    @status_window.persona.pop_new_skills_message if Persona::SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION
+    wait_for_message
   end
   
   def on_fuse_confirm
@@ -4593,6 +4628,8 @@ class Scene_BaseShuffle < Scene_Base
   def wait_for_message
     @message_window.update
     update_for_wait while $game_message.visible
+    $game_message.clear
+    @message_window.new_page
   end
   
   def update_selected_card

@@ -533,7 +533,10 @@ module Persona
 
   # Whether to show the level up and skill learned message while gaining
   # experience during fusion
-  SHOW_SKILL_LEARNED_MESSAGE = false
+  SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION = true
+  # Whether to aggregate all learned skills messages into a single message
+  # after fusion is done
+  AGGREGATE_LEARNED_SKILLS_SINGLE_MESSAGE = true
 
 #-------------------------------------------------------------------------------
 #  ____  _            __  __ _        __  __           _       _      
