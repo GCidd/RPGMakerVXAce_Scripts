@@ -944,8 +944,8 @@ class Window_Command < Window_Selectable
   end
 
   def draw_around_current_index
-    draw_start = self.index - self.visible_line_number
-    draw_end = self.index + self.visible_line_number
+    draw_start = self.index - self.visible_line_number * col_max
+    draw_end = self.index + self.visible_line_number * col_max
     draw_items(draw_start, draw_end)
   end
 
@@ -1069,6 +1069,7 @@ class Window_Personas < Window_Command
     rect = Rect.new
     rect.width = item_width
     rect.height = item_height
+    rect.x = index % col_max * item_width
     rect.y = index / col_max * item_height
     rect
   end
@@ -1589,7 +1590,6 @@ class Scene_Personas < Scene_Base
     @message_window.update
     update_for_wait while $game_message.busy?
     $game_message.clear
-    @message_window.new_page
   end
   
   def update_for_wait
@@ -1662,12 +1662,12 @@ class Scene_Personas < Scene_Base
     $game_party.menu_persona = @actor.persona
   end
   
-  def skip_personas_list?
-    @actor.has_exclusive_persona? && $game_party.actors_personas(@actor.id).length == 1
+  def skip_personas_list?(actor)
+    actor.has_exclusive_persona? && $game_party.actors_personas(actor.id).length == 1
   end
 
   def on_actor_change
-    if skip_personas_list?
+    if skip_personas_list?(@actor)
       # if current (new actor after next/prev_actor) uses only one persona 
       # and the persona is equipped, skip to status window (does not show 
       # all personas that can be equipped by specific actor as they can only 
@@ -1691,7 +1691,7 @@ class Scene_Personas < Scene_Base
   
   def next_actor
     new_actor = $game_party.menu_actor_next
-    if skip_personas_list? && new_actor.persona.nil?
+    if skip_personas_list?(new_actor) && new_actor.persona.nil?
       # if next actor can equip only one persona and it is not equipped (not in
       # the party) then move to next actor
       next_actor
@@ -1704,7 +1704,7 @@ class Scene_Personas < Scene_Base
   
   def prev_actor
     new_actor = $game_party.menu_actor_prev
-    if skip_personas_list? && new_actor.persona.nil?
+    if skip_personas_list?(new_actor) && new_actor.persona.nil?
       # if pervious actor can equip only one persona and it is not equipped (not in
       # the party) then stay in current actor
       prev_actor
@@ -1846,9 +1846,13 @@ class Game_Actor < Game_Battler
     end
   end
 
+  def show_level_up_message
+    return Persona::SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION && SceneManager.scene_is?(Scene_Fusion)
+  end
+
   alias persona_forget_ce change_exp
   def change_exp(exp, show)
-    persona_forget_ce(exp, Persona::SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION)
+    persona_forget_ce(exp, show || show_level_up_message)
     refresh
   end
   
@@ -1858,6 +1862,7 @@ class Game_Actor < Game_Battler
   end
 
   def pop_new_skills_message
+    @learned_skill_messages ||= []
     if @learned_skill_messages.size > 0
       $game_message.new_page
       @learned_skill_messages.each do |msg|
@@ -1869,7 +1874,7 @@ class Game_Actor < Game_Battler
 
   alias persona_dlu display_level_up
   def display_level_up(new_skills)
-    if Persona::SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION && SceneManager.scene_is?(Scene_Fusion)
+    if show_level_up_message
       if Persona::AGGREGATE_LEARNED_SKILLS_SINGLE_MESSAGE
         new_skills.each do |skill|
           @learned_skill_messages << sprintf(Vocab::ObtainSkill, skill.name)
@@ -2092,7 +2097,6 @@ class Scene_ForgetSkill < Scene_Base
     @message_window.update
     update_basic while $game_message.visible
     $game_message.clear
-    @message_window.new_page
   end
   
   def cancel_forget
@@ -3717,6 +3721,8 @@ class Scene_Fusion < Scene_Base
     @choice = -1
     
     run_skill_forget_if_needed(@status_window.persona)
+
+    $game_party.menu_persona = nil
   end
 
   def on_fuse_deny
@@ -4629,7 +4635,6 @@ class Scene_BaseShuffle < Scene_Base
     @message_window.update
     update_for_wait while $game_message.visible
     $game_message.clear
-    @message_window.new_page
   end
   
   def update_selected_card
