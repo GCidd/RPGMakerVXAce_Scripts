@@ -531,6 +531,13 @@ module Persona
   # Which personas does the order matter when fusing?
   ORDER_MATTERS_FOR = []
 
+  # Whether to show the level up and skill learned message while gaining
+  # experience during fusion
+  SHOW_SKILL_LEARNED_MESSAGE_IN_FUSION = false
+  # Whether to aggregate all learned skills messages into a single message
+  # after fusion is done
+  AGGREGATE_LEARNED_SKILLS_SINGLE_MESSAGE = false
+
 #-------------------------------------------------------------------------------
 #  ____  _            __  __ _        __  __           _       _      
 # / ___|| |__  _   _ / _|/ _| | ___  |  \/  | ___   __| |_   _| | ___ 
